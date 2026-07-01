@@ -1,0 +1,243 @@
+\documentclass[a4paper, 12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[a4paper]{geometry}
+\usepackage{enumitem}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{titlesec}
+\usepackage{tcolorbox}
+% \documentclass[tikz,border=5pt]{standalone}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[backend=bibtex, style=numeric]{biblatex}
+\addbibresource{thesis.bib}
+
+\hypersetup{
+	colorlinks=true, 
+	linktoc=all,     
+	linkcolor=blue,
+	linktocpage
+}
+
+\titleformat{\section}[display]{\Large\bfseries\itshape}{}{0ex}
+{\rule{\textwidth}{0.3pt}\vspace{0ex}
+	\centering}[\vspace{-1ex}\rule{\textwidth}{0.3pt}]
+
+\titleformat{\subsection}[display]{\large\itshape}{}{0ex}{}[]
+
+\newcommand{\unnumberedsection}[1]{
+	\newpage
+	\phantomsection
+	\addcontentsline{toc}{section}{#1}
+	\section*{#1}}
+\renewcommand\thesubsection{\Roman{subsection}}
+
+\parindent0mm
+\parskip1.5ex plus0.5ex minus0.5ex
+
+
+%%% Title page
+\title{\rule{\textwidth}{1.5pt}\vspace{0ex}
+	Research Diary
+\vspace{-1ex}\rule{\textwidth}{1.5pt}}
+\author{Caio Simon}
+% \date{Calender week 37, 2022}
+% \today
+
+\begin{document}
+	
+\maketitle
+
+\newpage
+\section{Current Project Status}
+
+\subsection{July 1, 2026}
+Ok, it has been a little while since I last wrote about the project, but some progress has been made in the meantime. First, some small administrative updates:
+
+\begin{itemize}
+    \item I found an existing simulator of basketball GM activities called ZenGM. It is very good, very deep, and written in TypeScript. I could adapt it and have that work as my simulator, which would mean I have fewer decisions to make and defend come thesis time, but I find thinking about the problem quite fun. I texted Jeremy, the creator of ZenGM and he said that he did not aim for realism. I don't know if anything I could write would approach ZenGM in quality, as it is a mature project already. It would give me more control over how the world works though.
+    \item Anders is now my supervisor
+\end{itemize}
+
+Ok, now onto the project status. 
+
+\paragraph{Player Signing} Free agency functionality, in its most basic possible form, has been added. Teams now sign players by offering non-zero salary to them. Players do not have any choice; the first team to bid on them gets them, which will be patched in later rounds.
+
+\paragraph{Initial Player Distribution} With the new player functionaly in place, there is no reason to just randomly give players to teams. Instead, there is a salary cap (set at 100, for simplicity) and teams sequentially sign players in the beginning by offering a salary to players with an allocated number of years. Again, the big weakness here is that players do not choose where to go --- the first team that bids, gets them.
+
+\paragraph{Player Evolution} Players now go through a pre-determined evolution curve, shown here:
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=12cm,
+    height=7cm,
+    xmin=19, xmax=40,
+    ymin=-11, ymax=3,
+    domain=19:40,
+    samples=300,
+    axis lines=middle,
+    xlabel={Age},
+    ylabel={$\Delta$ rating},
+    xtick={19,22,25,27,30,35,40},
+    ytick={-10,-8,-6,-4,-2,0,2},
+    grid=both,
+    minor tick num=1,
+    legend pos=south west,
+]
+\addplot[thick, blue]
+{-0.005*(x-27)^3};
+\addlegendentry{$\Delta=-0.005(age-27)^3$}
+\end{axis}
+\end{tikzpicture}
+\caption{Expected change in player rating as a function of age.}
+\label{fig:evolution_curve}
+\end{figure}
+
+The function I use is:
+
+\begin{equation}
+    \delta = -0.005 * (\text{age} - 27) ** 3 + \epsilon
+\end{equation}
+
+Where $\epsilon$ is some noise. For now I hardcode it as $\epsilon = 0.5$, but I have also considered making it a function of the rating (so really good players decline more, or improve faster, but I am not sure about that yet.) 
+
+\paragraph{RL training} I am also happy to announce that I was able to make an RLlib model train on this environment for the very first time! It was a bit of a pain to get it to work because of dependencies and missing packages (turns out RLlib isn't all that great in Windows) but it trained in the end, which I am happy about.
+
+For the rewards, I used this exponential decay function, with $k = 0.3$:
+
+\begin{equation}
+    r = e ^ {-k (\text{position} - 1)} 
+\end{equation}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=12cm,
+    height=7cm,
+    xmin=1, xmax=16,
+    ymin=0, ymax=1.05,
+    domain=1:20,
+    samples=300,
+    xlabel={League position},
+    ylabel={Reward},
+    xtick={1,5,10,15,20},
+    ytick={0,0.2,0.4,0.6,0.8,1.0},
+    grid=both,
+    minor tick num=1,
+    legend pos=north east,
+]
+
+\addplot[
+    thick,
+    blue,
+]
+{exp(-0.3*(x-1))};
+
+\addlegendentry{$R(p)=e^{-0.3(p-1)}$}
+
+\end{axis}
+\end{tikzpicture}
+\caption{Reward curve for teams in positions 1-16}
+\end{figure}
+
+The function applies to all teams in playoff positions (1-16, for now). Teams that did not make it also get the same reward function, but first they go through the draft lottery (with the current ruleset), and are assigned rewards based on that. So basically, they can have just as high rewards, but it is uncertain in which position they will land.
+
+I will now work on player retirement and adding new players through some sort of draft or bidding process.
+
+\subsection{To-Do (short-term)}
+\begin{itemize}
+    \item Allow teams to sign players --- free agency
+    \begin{itemize}
+        \item Initially agents will be able to observe player ratings, to make the simulation easier.
+        \item Must add preferences for players --- past success of a team and how much money they are offering.
+    \end{itemize}
+    \item Create trades for players
+    \begin{itemize}
+        \item Apparently this is hard to do; the combinatorial space is huge, so I will have to read more about how to do this.
+    \end{itemize}
+    \item $\checkmark$ Player evolution (easier)
+    \item Player retirement
+    \item New players in the league
+\end{itemize}
+
+
+\subsection{To-Do (long-term)}
+\begin{itemize}
+    \item \texttt{PettingZoo} environment where agents can sign players in the off-season.
+    \item \texttt{PettingZoo} environment where agents can trade players
+    \item \texttt{PettingZoo} environment where agents draft young players.
+    \item Calibration of parameters (veeery long-term)
+    \item Survival analysis for ageing players.
+\end{itemize}
+
+\newpage
+
+\section{Weakenesses}
+\begin{itemize}
+    \item Initial talent distribution
+    \item Parameters are guesstimated
+    \item Game simulation is too basic
+    \item Better players should account for a larger portion than end-of-bench players.
+\end{itemize}
+
+\section{Chronological Order}
+
+
+\subsection{\date{June 20, 2026}}
+
+Currently, I have managed to build a small simulation of basketball season games. It is an exceedingly simple simulation, but one that provides a strong basis for future work and small RL experiments. Important features are the following:
+
+\paragraph{Player Attributes}
+Players are defined by a single number, which for now I call their \textbf{impact} score. I drew from a lognormal distribution with parameters $\mu = 0$ and $\sigma = 1$. I played around with a pareto/power-law distribution as well, but that seemed too extreme for my taste. There were many not-so-great players and some which had absolutely run-away scores. The lognormal has the heavy-tailed aspect but it isn't as extreme as a Pareto distribution. Usually the best player in any given draw is 10 to 15 times better than the average player, which already seems like plenty to me. A pareto distribution usually creates even bigger talent discrepancies.
+
+\paragraph{Talent Distribution}
+Currently, players are simply generated by drawing from my prized lognormal distribution and they are randomly allocated to teams. Obviously, this is \textbf{unrealistic}, as talented players may have a preference for playing together (playing for winners) or for teams with capspace --- something I will have to figure out how to implement. For now teams cannot trade or sign players. I expect that already when this functionality is implemented that talent will eventually be distributed in a more realistic way.
+
+\paragraph{Game Simulation}
+Currently games are simulated in a very simple manner. A team has 10 players assigned to it, each with their skill score, which I will refer to as $s_p$ as the score of player p. The sum of the scores of all players in the team $i$ will generate $S_i$, the total score for team $i$:
+
+\begin{equation}
+    S_i = \sum_{p \in i} s_p
+\end{equation}
+
+($p \in i$) indicates that player $p$ plays for team $i$.
+
+Games are decided by:
+\begin{equation}
+    P(\text{Team } i \text{ wins}) = S_i - S_j + \epsilon
+\end{equation}
+
+Where $\epsilon \sim \text{Logistic}(0, \sigma_{\text{noise}})$. If $S_i - S_j + \epsilon > 0$, team $i$ is assigned as the winner of the game. 
+
+There are many problems with this approach. First, the best player and the end-of-the-bench player all have equal contribution under this scheme, whereas in the NBA it is unlikely the 10th best player would see much gametime. I need to devise a scheme where players get more gametime according to their skill or --- which would be even better --- I allow my RL model to devise a rotation under some contraints (no player can play more than 48 minutes; 240 minutes have to be apportioned in total). I might have to implement an injury or fatigue related mechanism for that if I want to prevent agents from abusing their best player, or I keep their minutes artificially below a certain threshold (40 minutes, for example).
+
+Second, players cannot be described by a single skill score. In reality we have players that can shoot, players that can pass, those that defend the perimeter, some that defend the paint, slashers, post-up players, mid-range specialists and so on. While it would be lovely to be able to simulate games with that level of granularity, the focus of the project is more on the behaviour of basketball teams, especially as it pertains to tanking. For now, I will forego these complicated simulations (also in the interest of time) and go ahead with my singular impact score. As the project develops I will also consider breaking this down into offensive ability score and defensive ability score, $s_{\text{off}}$ and $s_{\text{def}}$.
+
+Building on from the last point, for now I simply draw players from this lognormal distribution, whose parameters I decided on. In a dream scenario, I would be able to use a latent-factor modelling approach to calibrate this distribution for players. That would make this much more interesting and realistic. Otherwise I could also try to incorporate some ready-made impact metrics like PIPM, xRAPM, LEBRON, and DARKO. Or a statistical model of basketball games, but that seems to take me away from the point of the project already.
+
+Third, and for now last, is the logistic noise that I use, with variance $\sigma_{\text{noise}}$. This is very important in calibrating the share of matches that are decided by pure skill versus the natural variance in luck. 
+
+I simulated 16 seasons while respecting the NBA's scheduling style (more games within a division and conference), and I guesstimated some of the parameters. The win percentage I get with my simulation method is actually decently good for being so simple. Look at the plot below, where I compare the win pct distributions I get in simulation with the actual distribution of win percentages from the 2010-11 season.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.75\textwidth]{figs/win_pct_plot.png}
+    \caption{First look at simulated vs real win percentage. I don't get the slightly bimodal distribution yet, but I hope this will happen once teams start to make choices.}
+\end{figure}
+
+
+% \section{Reading List}
+% \cite{goktasInfiniteHorizonMarkov2025}
+
+% \section{Bibliography}
+% \printbibliography
+
+
+\end{document}
