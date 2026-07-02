@@ -57,6 +57,21 @@
 \section{Current Project Status}
 
 \subsection{July 1, 2026}
+Ok, today was spent hunting some bugs to do with player draft order logic and so, while making sure my drafting is solid. Now I am sure teams receive the correct draft order. Oh, and now agents see their current win percentage.
+
+But I looked at my class and I realised it became \textbf{HUGE!} This is a problem as this simple environment already spans hundreds of lines and is becoming hard to operate on. So I talked to chatbots like Claude and Gemini. Claude suggested I separate my \texttt{PettingZoo} environment into multiple different files, each of which handles a specific part of the process. This modular nature separates RL logic from the meat of the actual simulator, allowing me to conduct unit tests in a simpler manner. It gave me the scripts to use.
+
+Gemini suggested I implement action masking and replace turn counters (\texttt{self.num\_moves}) with a ``state machine'', which tells me which phase we are in and what are the steps to follow. I don't think the latter is useful at this point but it may become so in future.
+
+Ok, so tomorrow I plan to do the following:
+\begin{itemize}
+    \item Thoroughly test the scripts made by Claude. Make sure I know what each part does and how to edit everything.
+    \item Write my own unit tests, so that I get some practise.
+    \item Run a full simulated season (even if with random actions)
+    \item Attempt to train using this new structure.
+\end{itemize}
+
+\subsection{June 29, 2026}
 Ok, it has been a little while since I last wrote about the project, but some progress has been made in the meantime. First, some small administrative updates:
 
 \begin{itemize}
@@ -163,8 +178,8 @@ I will now work on player retirement and adding new players through some sort of
         \item Apparently this is hard to do; the combinatorial space is huge, so I will have to read more about how to do this.
     \end{itemize}
     \item $\checkmark$ Player evolution (easier)
-    \item Player retirement
-    \item New players in the league
+    \item  $\checkmark$ Player retirement
+    \item $\checkmark$ New players in the league
 \end{itemize}
 
 

@@ -69,6 +69,33 @@ def play_season(team_ratings, game_list, noise_scale, pct_played = 1):
 
 
 def draft_lottery():
+    """
+    Simulates an NBA-style weighted draft lottery for the 14 non-playoff teams.
+
+    Seeds are indexed 0-13, where seed 0 is the worst team in the league (best
+    lottery odds) and seed 13 is the best of the non-playoff teams (worst odds).
+    Each seed is assigned a fixed weight out of 1000 combinations, giving the
+    three worst teams equal (and the highest) odds at the first pick, with
+    weights decreasing monotonically down to seed 13.
+
+    The top 4 picks are drawn via weighted sampling without replacement: after
+    each pick is drawn, the winning seed is removed from the pool and the
+    remaining odds are renormalized before the next draw. This mirrors the
+    real lottery process, where winning an early pick removes a team from
+    contention for subsequent lottery slots.
+
+    The remaining 10 picks (positions 5-14) are NOT drawn by lottery -- they
+    are assigned in seed order (worst record first), matching the real NBA
+    format where only the top 4 picks are subject to lottery reordering.
+
+    Returns:
+        draft_order (list[int]): Seeds in draft-pick order, i.e.
+            draft_order[0] is the seed that won the 1st overall pick,
+            draft_order[1] the seed that won the 2nd, etc.
+        order_dict (dict[int, int]): Mapping from seed -> pick number
+            (1-indexed), the inverse of draft_order. E.g. order_dict[0]
+            gives the pick number awarded to the worst-record team.
+    """
     weights = np.array([
         140, 140, 140, 125, 105, 90, 75,
         60, 45, 30, 20, 15, 10, 5

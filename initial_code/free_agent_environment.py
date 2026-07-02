@@ -4,7 +4,7 @@ import functools
 
 import gymnasium
 import numpy as np
-from gymnasium.spaces import Discrete, Box, Dict
+from gymnasium.spaces import Discrete, Box, Dict, MultiDiscrete
 from gymnasium.utils import seeding
 
 from pettingzoo import AECEnv
@@ -97,8 +97,9 @@ class FreeAgencyEnv(AECEnv):
         player_teams = np.zeros(self.n_players)
         player_ages = np.clip(np.round(np.random.normal(27, 4, size=self.n_players)), 19, 40)
         player_contract_lens = np.zeros(self.n_players)
+        player_salaries = np.zeros(self.n_players)
 
-        self.players = np.vstack([player_ratings, player_teams, player_ages, player_contract_lens]).T
+        self.players = np.vstack([player_ratings, player_teams, player_ages, player_contract_lens, player_salaries]).T
 
         self.teams = {agent: np.zeros(players_per_team) for agent in self.possible_agents}
         self.team_salaries = {agent: 0.0 for agent in self.possible_agents}  # Track spent salary
@@ -107,7 +108,11 @@ class FreeAgencyEnv(AECEnv):
         self.contract_lengths = np.arange(1, 6)
         
         total_actions = self.n_players * len(self.salary_ranges) * len(self.contract_lengths)
-        self._action_spaces = {agent: Discrete(total_actions) for agent in self.possible_agents}
+        # self._action_spaces = {agent: Discrete(total_actions) for agent in self.possible_agents}
+        self._action_spaces = {
+            agent: MultiDiscrete([self.n_players, len(self.salary_ranges), len(self.contract_lengths)])
+            for agent in self.possible_agents
+        }
 
 
         self.team_win_pct = {agent: 0.5 for agent in self.possible_agents}
@@ -149,7 +154,9 @@ class FreeAgencyEnv(AECEnv):
     def observe(self, agent):
         observation = {
             "player_market": self.players.astype(np.float32),
-            "my_team": self.teams[agent].astype(np.float32)
+            "my_team": self.teams[agent].astype(np.float32),
+            "win_pct": np.array([self.team_win_pct[agent]], dtype=np.float32),
+            "has_history": np.array([self.team_has_history[agent]], dtype=np.float32),
         }
         return observation
 
@@ -212,9 +219,9 @@ class FreeAgencyEnv(AECEnv):
         player_teams = np.zeros(self.n_players)
         player_ages = np.clip(np.round(np.random.normal(27, 4, size=self.n_players)), 19, 40)
         player_contract_lens = np.zeros(self.n_players)
+        player_salaries = np.zeros(self.n_players)
 
-        self.players = np.vstack([player_ratings, player_teams, player_ages, player_contract_lens]).T
-
+        self.players = np.vstack([player_ratings, player_teams, player_ages, player_contract_lens, player_salaries]).T
         # Reset roster structure & salary pools
         self.teams = {agent: np.zeros(self.players_per_team) for agent in self.agents}
         self.team_salaries = {agent: 0.0 for agent in self.agents}
@@ -224,6 +231,11 @@ class FreeAgencyEnv(AECEnv):
         
         self.num_moves = 0
         self.season = 0
+        self.rookie_contract_len = 4
+        self.rookie_salary = 5
+
+
+        self.full_draft_order = self.possible_agents[:]
 
         self.g_list = generate_exact_nba_schedule(self.n_teams)
 
@@ -236,19 +248,22 @@ class FreeAgencyEnv(AECEnv):
         """
         Decodes the discrete action integer into Player, Salary, and Contract Length.
         """
-        n_salaries = len(self.salary_ranges)
-        n_lengths = len(self.contract_lengths)
+        # n_salaries = len(self.salary_ranges)
+        # n_lengths = len(self.contract_lengths)
         
-        # Decode step-by-step
-        contract_len_idx = action % n_lengths
-        action //= n_lengths
+        # # Decode step-by-step
+        # contract_len_idx = action % n_lengths
+        # action //= n_lengths
         
-        salary_idx = action % n_salaries
-        player_id = action // n_salaries
+        # salary_idx = action % n_salaries
+        # player_id = action // n_salaries
         
+        # offered_salary = self.salary_ranges[salary_idx]
+        # chosen_length = self.contract_lengths[contract_len_idx]
+        player_id, salary_idx, contract_len_idx = action
+
         offered_salary = self.salary_ranges[salary_idx]
         chosen_length = self.contract_lengths[contract_len_idx]
-        
         # --- GUARD CLAUSES ---
         # 1. Is the player already under contract with someone?
         if self.players[player_id, 1] != 0:
@@ -271,8 +286,9 @@ class FreeAgencyEnv(AECEnv):
         
         # Save structural details to Market Matrix
         agent_numeric_idx = int(agent.split("_")[1])
-        self.players[player_id, 1] = agent_numeric_idx + 1 # Team marker
+        self.players[player_id, 1] = agent_numeric_idx + 1  # Team marker
         self.players[player_id, 3] = chosen_length          # Years marker
+        self.players[player_id, 4] = offered_salary         # Salary marker
 
     def _is_draft_complete(self):
         """
@@ -300,15 +316,19 @@ class FreeAgencyEnv(AECEnv):
         
         # Rank teams 1 through 30 based on performance
         ranked_teams = sorted(enumerate(wins), key=lambda item: item[1], reverse=True)
-        
         # --- PRINT COMPLETE STANDINGS DASHBOARD ---
         print("\n" + "="*55)
         print(f"{'RANK':<6} | {'TEAM NAME':<25} | {'WINS':<5} | {'REWARD':<8}")
         print("="*55)
         
         draft_order, order_dict = draft_lottery()
+        self.draft_order = draft_order
+        self.order_dict = order_dict
+        self.positions = {}
+        self.full_draft_order = [None] * self.n_teams
         # Distribute scores and print row items
         for position, (team_idx, total_wins) in enumerate(ranked_teams, start=1):
+            # self.positions.append(position)
             agent_name = f"team_{team_idx}"
             real_name = self.agent_name_mapping[agent_name]
             
@@ -317,13 +337,19 @@ class FreeAgencyEnv(AECEnv):
                 reward_val = reward_func(position)
                 self.rewards[agent_name] = reward_val
                 playoff_marker = "⭐"  # Mark playoff teams
+                # draft_position = seed_position(position)
+                draft_position = 31 - position
+                self.positions[agent_name] = draft_position
             else:
                 draft_seed = seed_position(position)
-                draft_position = draft_order[draft_seed]
+                draft_position = order_dict[draft_seed]
+                self.positions[agent_name] = draft_position
                 reward_val = reward_func(draft_position, k = 0.4)
                 self.rewards[agent_name] = reward_val
                 playoff_marker = "  "
 
+            # full_draft_order[draft_position - 1] = agent_name
+            self.full_draft_order[draft_position - 1] = agent_name
             # Print aligned standings row
             print(f"{position:<2} {playoff_marker} | {real_name:<25} | {int(total_wins):<5} | {reward_val:.4f}")
             
@@ -332,64 +358,111 @@ class FreeAgencyEnv(AECEnv):
                 
         print("="*55 + "\n")
 
+
     def _player_update(self):
-        ratings = self.players[:, 0]
-        age = self.players[:, 2]
+        ratings = self.players[:, 0].copy()
+        age = self.players[:, 2].copy()
         print(self.players[:5])
         self.players[:, 2] = age + 1
         self.players[:, 0] = [evolve_func(r, a) for r, a in zip(ratings, age)]
         self.players[:, 0] = np.clip(self.players[:, 0], 0.1, np.inf)
         print(self.players[:5])
 
-    def _new_entrants(self, n_new_players = 60):
+    def _new_entrants(self, n_new_players=60):
         player_ratings = sorted(stats.lognorm.rvs(loc=0, s=0.8, size=n_new_players), reverse=True)
         player_teams = np.zeros(n_new_players)
-        player_ages = np.clip(np.round(np.random.normal(21, 1, size = n_new_players)), 19, 40)
+        player_ages = np.clip(np.round(np.random.normal(21, 1, size=n_new_players)), 19, 40)
         player_contract_lens = np.zeros(n_new_players)
+        player_salaries = np.zeros(n_new_players)
 
-        new_players = np.vstack([player_ratings, player_teams, player_ages, player_contract_lens]).T
+        new_players = np.vstack([player_ratings, player_teams, player_ages, player_contract_lens, player_salaries]).T
+        new_players = new_players[np.argsort(-new_players[:, 0])]
         return new_players
-
-    # def retire_old_folk(self, n_to_retire = 60):
-
-    def _prepare_next_season(self):
+    
+    def _pick_retirees(self, n_to_retire = 60):
+        scores = retirement_risk(self.players[:, 2]) # Input player ages
+        probs = scores / np.sum(scores)
+        retire_idx = np.random.choice(len(self.players), size=n_to_retire, p=probs, replace=False)
+        return retire_idx
+    
+    def _run_rookie_draft(self, n_to_retire=60):
         """
-        Updates multi-year contracts, returns expired players to the open market,
-        and retains signed cores while resetting team salary calculations.
+        Retires a batch of players (weighted toward older ages) and replaces them
+        with fresh draft-eligible entrants. Entrants are auto-assigned to teams by
+        draft order, best-available-first, across two 30-pick rounds. Teams whose
+        roster is already full forfeit that pick -- the rookie stays on the open
+        market instead of being force-assigned.
         """
-        # 1. Find all currently signed players (where contract years > 0)
+        retire_idx = self._pick_retirees(n_to_retire=n_to_retire)
+        new_players = self._new_entrants(n_new_players=n_to_retire)
+        self.players[retire_idx] = new_players
+
+        # Count each team's current roster occupancy from live ownership markers
+        team_counts = self._get_team_counts()
+
+        pick_num = 0
+        for round_num in range(2):
+            for agent in self.full_draft_order:
+                if pick_num >= n_to_retire:
+                    break
+
+                is_roster_full = team_counts[agent] >= self.players_per_team
+                is_cap_broken = self.team_salaries[agent] + self.rookie_salary > self.salary_cap
+
+                if (is_roster_full) or (is_cap_broken):
+                    # Forfeit pick
+                    pick_num += 1
+                    continue
+
+                player_idx = retire_idx[pick_num]
+                agent_numeric_idx = int(agent.split("_")[1])
+                self.players[player_idx, 1] = agent_numeric_idx + 1
+                self.players[player_idx, 3] = self.rookie_contract_len
+                self.players[player_idx, 4] = self.rookie_salary
+                team_counts[agent] += 1
+                self.team_salaries[agent] += self.rookie_salary
+                pick_num += 1
+
+    def _get_team_counts(self):
+        team_counts = {agent: 0 for agent in self.possible_agents}
+        owned_mask = self.players[:, 1] > 0
+        for marker in self.players[owned_mask, 1].astype(int):
+            team_counts[f"team_{marker - 1}"] += 1
+
+        return team_counts
+
+
+    def _contract_update(self):
+        """
+        Dwindles down the contract of all signed players; releases players that became free agents
+        """
         signed_mask = self.players[:, 3] > 0
-        
-        # Dwindle contract lengths by 1 year
         self.players[signed_mask, 3] -= 1
-        
-        # 2. Find players whose contracts have officially expired this offseason
+
         expired_mask = (self.players[:, 3] == 0) & (self.players[:, 1] != 0)
-        
-        # Release expired players back to free agency
-        self.players[expired_mask, 1] = 0.0 # Clear team ownership
-        
-        # 3. Rebuild rosters and calculate modern cap spendings for the next draft loop
+        self.players[expired_mask, 1] = 0.0
+        self.players[expired_mask, 4] = 0.0  # clear salary too — they're free agents now
+
+    def _rebuild_rosters(self):
+        """
+        Reassigns players to teams anc checks salaries
+        """
         self.teams = {agent: np.zeros(self.players_per_team) for agent in self.possible_agents}
         self.team_salaries = {agent: 0.0 for agent in self.possible_agents}
-        
-        # Populate rosters with players who are still under contract
+
         for player_idx, player in enumerate(self.players):
             team_marker = int(player[1])
-            if team_marker > 0: # If currently owned
+            if team_marker > 0:
                 agent = f"team_{team_marker - 1}"
                 rating = player[0]
-                
-                # Re-add to team vector
+                salary = player[4]
+
                 team_vector = self.teams[agent]
                 empty_slots = np.where(team_vector == 0.0)[0]
                 if len(empty_slots) > 0:
                     self.teams[agent][empty_slots[0]] = rating
-                    
-                # Note: This basic system assumes fixed salaries per year. 
-                # For high fidelity, you could add a 5th column to explicitly track self.players contract salary!
-                # For now, we will assume an arbitrary default cap hold or recalculate dynamically.
-                
+                    self.team_salaries[agent] += salary
+
     def step(self, action):
         """
         Executes exactly ONE environment step for the currently selected agent.
@@ -419,7 +492,10 @@ class FreeAgencyEnv(AECEnv):
             self.print_team_rosters()
             self._simulate_and_reward_season()  # This populates self.rewards
             self._player_update()
-            self._prepare_next_season()
+            self._contract_update()
+            self._rebuild_rosters() # I run rebuild rosters twice: once to check whether teams can sign rookies, and the second to incorporate them
+            self._run_rookie_draft(n_to_retire = 60)
+            self._rebuild_rosters()
             
             # Advance to the next season
             self.season += 1
@@ -451,11 +527,40 @@ class FreeAgencyEnv(AECEnv):
 #%%
 env = FreeAgencyEnv(render_mode="human")
 env.reset()
+env._simulate_and_reward_season()
 
 #%%
-sorted_players = env.players[env.players[:, 0].argsort(descending = True)]
-# sorted_players[:60]
-sorted_players
+position = 30
+
+draft_order, order_dict = draft_lottery()
+
+print(draft_order)
+draft_seed = seed_position(position)
+print(draft_seed)
+order_dict[draft_seed]
+# draft_position = draft_order[draft_seed]
+# print(draft_position)
+#%%
+# seed_position(30)
+# 30 - 1
+import re
+def rm_team(s):
+    try:
+        return int(s[5:])
+    except:
+        return None
+#%%
+print(env.draft_order)
+full_order = [rm_team(i) for i in env.full_draft_order]
+# print(env.full_draft_order)
+print(full_order)
+print(nba_teams[full_order[-1]])
+print(nba_teams[full_order[-2]])
+print(nba_teams[full_order[-3]])
+
+# set(env.full_draft_order).symmetric_difference(set(np.arange(30))) 
+# print(nba_teams[])
+# seed_position()
 
 #%%
 
