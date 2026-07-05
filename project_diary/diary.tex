@@ -9,6 +9,8 @@
 \usepackage{color}
 \usepackage{hyperref}
 \usepackage{booktabs}
+\usepackage{float}
+\usepackage{graphicx}
 \usepackage{titlesec}
 \usepackage{tcolorbox}
 % \documentclass[tikz,border=5pt]{standalone}
@@ -54,7 +56,111 @@
 \maketitle
 
 \newpage
-\section{Current Project Status}
+
+\subsection{To-Do (short-term)}
+\begin{itemize}
+    \item Action masking
+    \item Allow teams to see their place in standings + also their strength score next to other teams.
+    \item Allow teams to sign players --- free agency
+    \begin{itemize}
+        \item Initially agents will be able to observe player ratings, to make the simulation easier.
+        \item Must add preferences for players --- past success of a team and how much money they are offering.
+    \end{itemize}
+    \item Create trades for players
+    \begin{itemize}
+        \item Apparently this is hard to do; the combinatorial space is huge, so I will have to read more about how to do this.
+    \end{itemize}
+    \item $\checkmark$ Player evolution (easier)
+    \item  $\checkmark$ Player retirement
+    \item $\checkmark$ New players in the league
+\end{itemize}
+
+
+\subsection{To-Do (long-term)}
+\begin{itemize}
+    \item \texttt{PettingZoo} environment where agents can sign players in the off-season.
+    \item \texttt{PettingZoo} environment where agents can trade players
+    \item \texttt{PettingZoo} environment where agents draft young players.
+    \item Calibration of parameters (veeery long-term)
+    \item Survival analysis for ageing players.
+\end{itemize}
+
+\newpage
+
+\section{Weakenesses}
+\begin{itemize}
+    \item Initial talent distribution
+    \item Parameters are guesstimated
+    \item Game simulation is too basic
+    \item Better players should account for a larger portion than end-of-bench players.
+\end{itemize}
+
+\section{Chronological Order}
+
+\subsection{July 4, 2026}
+
+I have been thinking about the issue of measuring tanking a bit more and I think I have a much better idea of what I want to do. This all goes back to that initial experiment I did, with distributing players randomly to teams and then having them play against each other. I'll put the image back here again.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figs/win_pct_plot.png}
+    \caption{First look at simulated vs real win percentage. I don't get the slightly bimodal distribution yet, but I hope this will happen once teams start to make choices.}
+\end{figure}
+
+Before I was too myopic. I was looking only at trying to discern whether specific teams were tanking, but I don't care that much about micro behaviour in this project. Instead, I should be able to see the pattern at a macro level. By plotting the distribution of win percentages across different league rules, I can assess how bi-modal the distributions appear to be (a sign of tanking), and I can also compare distributions with metrics, like Wasserstein distance or KL divergence, to see how close they are to some idea distribution.
+
+So for example, let's say I have an environment with no lottery. Teams are either randomly allocated young talent or they simply enter free agency. Then I train an agent whose only concern is to win a championship \footnote{I could also play with the discount rate, if need be}. Then I would have a ``win-maximising'' league, where no handouts are given, and teams have to make do with wily moves \footnote{I haven't thought about it yet, but I could also imagine having teams in this league still have some heterogeneity in how much they care about championships vs regular season win percentage and such}. The point is that I get league where there is no reward for losing. That is, unless you cut players for cap space (even then in order to win shortly after).
+
+So then I gather many seasons of this type of league and I have a win percentage plot. I expect it to be some sort of normal distribution, probably slightly skewed towards the top end. I also gather data on my alternative leagues: the one with the current lottery, COLA, Nate Silver's Arcs, the old lottery system, the new proposed system, and so on. I would expect these leagues to have some form of bi-modality, as losing is still encouraged somewhat. With this and the ``winner's league'' as my reference distribution I can compare using Wasserstein/KL to find the distance between distributions. Then some permutation tests to get some p-value --- I think this is a decent design!
+
+The argument still rests on having the ``win-maximising'' league be some sort of credible reference point. The judges could have a problem with that. Especially as this style, which is more reminiscent of European football, would bear some of the same issues like rich get richer and ossified structures --- basically no parity.
+
+So while chatting with GPT, there are other approaches I could take, all centred around this win-percentage distribution.
+
+\paragraph{Idea 1}
+I can have some mixture model with either two (tanking vs winning) or 3 (tanking, buying, winning) distributions. Let's stick to 2 for simplicty. I can fit the model on one league (one of the setups where I know that tanking will happen, or even the actual NBA), which will get me the probability density of observing a team with a certain win percentage, $f(x)$:
+\begin{equation}
+    f(x) = p i_{T} f_{T}(x) + (1-p i_{T})f_W (x)
+\end{equation}
+
+Here $p i_{T}$ is the probability of a team being a tanking team. $f_{T}(x)$ and $f_W (x)$ are the probability distributions of tanking and winning teams respectively. Now I take this to another league. I keep the distributions $f_{T}(x)$ and $f_W (x)$ fixed, and look at the $p i_{T}$ that the model outputs, as that is the probability of tanking.
+
+Now, the one big flaw here is that I need to keep $f_{T}(x)$ and $f_W (x)$, but in different league setups these distributions will probably be different (different mean and $\sigma$). Which leads to option 2, the more sophisticated version.
+
+\paragraph{Option 2 --- Hierarchical Model}
+Now I allow the distributions to vary by league. Team $i$ in league $j$ has win percentage $x_{ij}$. So then now we say that:
+\begin{equation}
+    x_{ij} \sim p_{ij} f_T + (1 - p_{ij}) f_W
+\end{equation}
+
+And now I can say that:
+\begin{equation}
+    p_{ij} \sim \text{Beta}(\alpha, \beta)
+\end{equation}
+
+Which cleanly estimates the propability of a team tanking.
+
+Of course, since $f_T$ and $f_W$ are distributions (likely Gaussian, perhaps Betas), then I can also have the parameters themselves be drawn from a hyperprior specific to each league. This would give me more flexibility because now the distributions vary between leagues. It encodes the possibility that teams ``tank differently'', or have different behaviours in leagues. The problem is that the distributions, given their flexibility, might lose their meaning; I might not have a clean ``tanking'' vs ``winning'' distribution. At first I think it is safer to hold the distributions steady across leagues. If I see predictions are bad, then I can switch!
+
+
+\subsection{July 2, 2026}
+
+I have become slightly more acquainted with the environment built by Claude but it is still a bit daunting, even at this early stage. I built some unit tests myself to get a feel for things, but I still need to try to run this using Ray RLlib.
+
+As to-dos, I added action masking (should make learning faster), and altering the observation space such that teams are able to see their place in the standings, their strength score relative to other teams (perhaps their Z-score), and so on.
+
+Now I am struggling with the following: how do I actually evaluate whether tanking is happening? My first idea was to use regression. The thought was to predict the probability of signing a player and I would pass in their attributes like skill and age, along with a dummy for a team's position. Then I could see the shift in how likely a team is to sign a player according to its position, holding a player's attributes fixed, if need be. But I don't love this idea, because it is perfectly legitimate for a team to sign a young player that is slightly worse than the best player now, on the hopes that they will surpass the older player in the future.
+
+So there are some more options I could think of. One, which I like, is to also train another model on the side with discount factor set to 0 (or some other similarly low number) OR to simply have a handwritten policy that greedily signs the best available player. Then agents will care only about their immediate reward and optimise for next-season success. I would use this as a comparison point to see where both styles converge and diverge. I would expect agents that are winning to follow largely similar policies, but mid-tier and low tier teams would diverge significantly. This still doesn't answer \textit{how} I would check for this divergence. Claude suggested I simply check the probability mass that my trained policy assigns to the best available player, and then I can regress on the divergence between the actual vs greedy policies. As predictors I would use some team-season FE and definitely the team standings, or some dummy for "contention"/top k.
+
+\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black, title = Short Note]
+    As an addendum, Claude actually suggested I might also train policies on different levels of discount rate $\gamma$, like $\gamma \in \{0, 0.3, 0.6, 0.9\}$ as a sort of "dose". Then I can see how much behaviour changes as the importance of the future also changes.  
+\end{tcolorbox}
+
+Another clean idea is to run a regression that predicts the total difference in impact score from the beginning of the offseason versus afterwards. I like this idea, as it is simple and cool. Then I could include draft position or standing as the predictor, among some other fixed effects. Would probably go well.
+
+The thought of switching to an environment where I model bank failures is still on my mind, though. I might do some reading on that before I invest more time here. The biggest reason here is that I expect there to be more pre-built models of the banking system and bank runs; that reduces the number of choices I have to make and defend, and allows me to focus on exploring interventions/RL. I have to do more research.
+
 
 \subsection{July 1, 2026}
 Ok, today was spent hunting some bugs to do with player draft order logic and so, while making sure my drafting is solid. Now I am sure teams receive the correct draft order. Oh, and now agents see their current win percentage.
@@ -166,43 +272,6 @@ The function applies to all teams in playoff positions (1-16, for now). Teams th
 
 I will now work on player retirement and adding new players through some sort of draft or bidding process.
 
-\subsection{To-Do (short-term)}
-\begin{itemize}
-    \item Allow teams to sign players --- free agency
-    \begin{itemize}
-        \item Initially agents will be able to observe player ratings, to make the simulation easier.
-        \item Must add preferences for players --- past success of a team and how much money they are offering.
-    \end{itemize}
-    \item Create trades for players
-    \begin{itemize}
-        \item Apparently this is hard to do; the combinatorial space is huge, so I will have to read more about how to do this.
-    \end{itemize}
-    \item $\checkmark$ Player evolution (easier)
-    \item  $\checkmark$ Player retirement
-    \item $\checkmark$ New players in the league
-\end{itemize}
-
-
-\subsection{To-Do (long-term)}
-\begin{itemize}
-    \item \texttt{PettingZoo} environment where agents can sign players in the off-season.
-    \item \texttt{PettingZoo} environment where agents can trade players
-    \item \texttt{PettingZoo} environment where agents draft young players.
-    \item Calibration of parameters (veeery long-term)
-    \item Survival analysis for ageing players.
-\end{itemize}
-
-\newpage
-
-\section{Weakenesses}
-\begin{itemize}
-    \item Initial talent distribution
-    \item Parameters are guesstimated
-    \item Game simulation is too basic
-    \item Better players should account for a larger portion than end-of-bench players.
-\end{itemize}
-
-\section{Chronological Order}
 
 
 \subsection{\date{June 20, 2026}}

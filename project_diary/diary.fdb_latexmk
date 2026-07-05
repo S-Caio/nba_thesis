@@ -1,15 +1,15 @@
 # Fdb version 4
-["bibtex diary"] 1782948069.57258 "diary.aux" "diary.bbl" "diary" 1782948100.93445 0
-  "./diary-blx.bib" 1782948098 342 20d1170ef6c1d70c658d70e011e08dba ""
+["bibtex diary"] 1783206332.45164 "diary.aux" "diary.bbl" "diary" 1783206339.7476 0
+  "./diary-blx.bib" 1783206337 342 20d1170ef6c1d70c658d70e011e08dba ""
   "./thesis.bib" 1781959990 29637 991a9e950daeda48c4e06bd518aec02d ""
   "c:/texlive/2025/texmf-dist/bibtex/bst/biblatex/biblatex.bst" 1765965773 65510 9a2a51799b543ff279b8ea2dd91ec499 ""
-  "diary.aux" 1782948098 2739 d9518767240af6403d35957cb1acb1b1 "pdflatex"
+  "diary.aux" 1783206337 3336 3ff5e09847be7585e1bb4229545b5d32 "pdflatex"
   (generated)
   "diary.bbl"
   "diary.blg"
   (rewritten before read)
-["pdflatex"] 1782948095.59619 "c:/Users/jotin/OneDrive/Documents/EMAI/thesis/project_diary/diary.tex" "diary.pdf" "diary" 1782948100.93591 0
-  "c:/Users/jotin/OneDrive/Documents/EMAI/thesis/project_diary/diary.tex" 1782948094 13695 6868689dd5ec2b628f31f4d655ee16fc ""
+["pdflatex"] 1783206333.23714 "c:/Users/jotin/OneDrive/Documents/EMAI/thesis/project_diary/diary.tex" "diary.pdf" "diary" 1783206339.75023 0
+  "c:/Users/jotin/OneDrive/Documents/EMAI/thesis/project_diary/diary.tex" 1783206316 22337 2633b6c1fbc96be861693a9a40dd8963 ""
   "c:/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1765966952 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "c:/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1765969087 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "c:/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/tcrm1200.tfm" 1765968161 1536 74b7293ec3713bb7fdca8dd1bd1f469c ""
@@ -41,8 +41,10 @@
   "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb" 1765964602 30251 6afa5cb1d0204815a708a080681d4674 ""
   "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb" 1765964602 36741 0ee9e374ec3e30da87cdfb0ea3575226 ""
   "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb" 1765964602 35469 dcf3a5f2fc1862f5952e3ee5eb1d98c4 ""
+  "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb" 1765964602 35752 024fb6c41858982481f6968b5fc26508 ""
   "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb" 1765964602 32722 d7379af29a190c3f453aba36302ff5a9 ""
   "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb" 1765964602 32362 bc3f3eec7ab7d65fe700963d4017d32c ""
+  "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb" 1765964602 32762 7fee39e011c23b3589931effd97b9702 ""
   "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb" 1765964602 32726 39f0f9e62e84beb801509898a605dbd5 ""
   "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb" 1765964602 32569 5e5ddc8df908dea60932f3c484a54c0d ""
   "c:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb" 1765964603 32626 5abc8bb2f28aa647d4c70f8ea38cc0d3 ""
@@ -187,6 +189,7 @@
   "c:/texlive/2025/texmf-dist/tex/latex/environ/environ.sty" 1765968375 4378 f429f0da968c278653359293040a8f52 ""
   "c:/texlive/2025/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty" 1765968423 13886 d1306dcf79a944f6988e688c1785f9ce ""
   "c:/texlive/2025/texmf-dist/tex/latex/etoolbox/etoolbox.sty" 1765968528 46885 8953c67ffba03252c6090aa19568b8ba ""
+  "c:/texlive/2025/texmf-dist/tex/latex/float/float.sty" 1765969003 6749 16d2656a1984957e674b149555f1ea1d ""
   "c:/texlive/2025/texmf-dist/tex/latex/geometry/geometry.sty" 1765969344 41601 9cf6c5257b1bc7af01a58859749dd37a ""
   "c:/texlive/2025/texmf-dist/tex/latex/graphics-cfg/color.cfg" 1765969569 1213 620bba36b25224fa9b7e1ccb4ecb76fd ""
   "c:/texlive/2025/texmf-dist/tex/latex/graphics-cfg/graphics.cfg" 1765969569 1224 978390e9c2234eab29404bc21b268d1e ""
@@ -234,11 +237,11 @@
   "c:/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1765993964 5587484 30eee748fa419a911c40b0c750dd21ba ""
   "c:/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt" 1765994255 3635704 6a6c32e5d8adf436ff299f0de81664e1 ""
   "c:/texlive/2025/texmf.cnf" 1765993906 713 e69b156964470283e0530f5060668171 ""
-  "diary.aux" 1782948098 2739 d9518767240af6403d35957cb1acb1b1 "pdflatex"
-  "diary.bbl" 1782948070 519 9b1193ea42022b65f5e4436756b83bc1 "bibtex diary"
-  "diary.out" 1782948098 1084 762be9348b68ff2a869df8a76ba6c517 "pdflatex"
-  "diary.run.xml" 1782948098 2527 e35710b90eac5a1d686f2e3d4791305a "pdflatex"
-  "diary.tex" 1782948094 13695 6868689dd5ec2b628f31f4d655ee16fc ""
+  "diary.aux" 1783206337 3336 3ff5e09847be7585e1bb4229545b5d32 "pdflatex"
+  "diary.bbl" 1783206333 519 9b1193ea42022b65f5e4436756b83bc1 "bibtex diary"
+  "diary.out" 1783206337 1153 2c090b98119129ec0da762405ff2f18f "pdflatex"
+  "diary.run.xml" 1783206337 2527 e35710b90eac5a1d686f2e3d4791305a "pdflatex"
+  "diary.tex" 1783206316 22337 2633b6c1fbc96be861693a9a40dd8963 ""
   "figs/win_pct_plot.png" 1781965219 81059 506757d21346fc370cbef6bc1fe4fc2a ""
   (generated)
   "diary-blx.bib"
