@@ -1,0 +1,21 @@
+2026-07-17 17:34:47,461	INFO worker.py:2015 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+2026-07-17 17:34:58,411	INFO worker.py:2015 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+2026-07-17 17:35:08,328	WARNING compression.py:17 -- lz4 not available, disabling sample compression. This will significantly impact RLlib performance. To install lz4, run `pip install lz4`.
+2026-07-17 17:35:10,751	WARNING train.py:253 -- DeprecationWarning: `build` has been deprecated. Use `AlgorithmConfig.build_algo` instead. This will raise an error in the future!
+2026-07-17 17:35:18,709	INFO worker.py:2015 -- Started a local Ray instance. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+[2026-07-17 17:35:23,383 E 312013 312013] core_worker.cc:2149: Actor with class name: 'RolloutWorker' and ID: '95b55291d27a73b4c6d3a7d401000000' has constructor arguments in the object store and max_restarts > 0. If the arguments in the object store go out of scope or are lost, the actor restart will fail. See https://github.com/ray-project/ray/issues/53727 for more details.
+[36m(pid=312815)[0m lz4 not available, disabling sample compression. This will significantly impact RLlib performance. To install lz4, run `pip install lz4`.
+2026-07-17 17:35:33,902	INFO trainable.py:154 -- Trainable.setup took 23.146 seconds. If your trainable is slow to initialize, consider setting reuse_actors=True to reduce actor creation overheads.
+2026-07-17 17:35:33,902	WARNING util.py:62 -- Install gputil for GPU system monitoring.
+[36m(RolloutWorker pid=312815)[0m /d/hpc/home/cs67685/.conda/envs/rl_thesis/lib/python3.14/site-packages/numpy/_core/_methods.py:132: RuntimeWarning: overflow encountered in reduce
+[36m(RolloutWorker pid=312815)[0m   ret = umr_sum(arr, axis, dtype, out, keepdims, where=where)
+[36m(pid=312819)[0m lz4 not available, disabling sample compression. This will significantly impact RLlib performance. To install lz4, run `pip install lz4`.
+2026-07-17 17:35:48,826	WARNING sgd.py:55 -- DeprecationWarning: `_get_slice_indices` has been deprecated. This will raise an error in the future!
+/d/hpc/home/cs67685/.conda/envs/rl_thesis/lib/python3.14/site-packages/numpy/_core/_methods.py:132: RuntimeWarning: overflow encountered in reduce
+  ret = umr_sum(arr, axis, dtype, out, keepdims, where=where)
+2026-07-17 17:36:03,526	WARNING ppo.py:557 -- The mean reward returned from the environment is 12.454428672790527 but the vf_clip_param is set to 10.0. Consider increasing it for policy: shared_policy to improve value function convergence.
+Traceback (most recent call last):
+  File "/d/hpc/home/cs67685/nba_thesis/free_agency_refactor/train.py", line 265, in <module>
+    "reward": result["episode_reward_mean"],
+              ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'episode_reward_mean'

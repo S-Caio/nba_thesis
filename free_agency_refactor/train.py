@@ -64,9 +64,9 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
         # Conv1d over the player axis lets each player's embedding see its
         # rank-neighbors (players just above/below it in rating).
         self.player_conv = nn.Sequential(
-            nn.Conv1d(self.n_player_cols, conv_hidden, kernel_size=1, padding=1),
+            nn.Conv1d(self.n_player_cols, conv_hidden, kernel_size=1),
             nn.ReLU(),
-            nn.Conv1d(conv_hidden, player_embed_dim, kernel_size=1, padding=1),
+            nn.Conv1d(conv_hidden, player_embed_dim, kernel_size=1),
             nn.ReLU(),
         )
         player_feat_dim = player_embed_dim * self.n_players  # flatten preserves order
@@ -140,6 +140,73 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
 ModelCatalog.register_custom_model("free_agency_masked_model", FreeAgencyMaskedModel)
 
 
+def evaluate_and_log_policy(algo, iteration, csv_path="evaluation_win_pct.csv", n_seasons=10):
+    """
+    Runs a standalone evaluation rollout, extracts team win percentages,
+    computes league competitive parity, and appends the records to a CSV.
+    """
+    from free_agency.constants import LeagueConfig  # Adjust path to match your layout
+    
+    # 1. Initialize evaluation environment
+    eval_config = LeagueConfig()
+    eval_config.n_seasons = n_seasons
+    eval_env = FreeAgencyEnv(config=eval_config)
+    eval_env.reset()
+    
+    # Trackers
+    last_season = 0
+    records = []
+    
+    # 2. Sequential environment rollout loop
+    for agent in eval_env.agent_iter():
+        obs, reward, termination, truncation, info = eval_env.last()
+        
+        if termination or truncation:
+            action = None
+        else:
+            action = algo.compute_single_action(
+                obs, 
+                policy_id="shared_policy", 
+                explore=False # Deterministic behavior for objective tracking
+            )
+            
+        eval_env.step(action)
+        
+        # 3. Intercept seasonal boundaries
+        if eval_env.num_moves == 0 and eval_env.season > last_season:
+            completed_season = last_season
+            
+            # Extract win percentages
+            season_win_p_dict = {
+                team: float(eval_env.league.team_win_pct[team])
+                for team in eval_env.possible_agents
+            }
+            
+            # Structural row compilation
+            row = {
+                "iteration": iteration,
+                "evaluation_season": completed_season,
+                "league_std_dev": np.std(list(season_win_p_dict.values()))
+            }
+            # Append every individual team metric inline
+            for team_id, win_pct in season_win_p_dict.items():
+                row[team_id] = win_pct
+                
+            records.append(row)
+            last_season = eval_env.season
+            
+    # 4. Persistence layer using Pandas
+    df_new = pd.DataFrame(records)
+    
+    if not os.path.exists(csv_path):
+        df_new.to_csv(csv_path, index=False)
+        print(f" Created new tracking log file: {csv_path}")
+    else:
+        df_new.to_csv(csv_path, mode='a', header=False, index=False)
+        print(f" Appended {len(records)} evaluation records to {csv_path}")
+
+
+
 # ---------------------------------------------------------------------------
 # Usage sketch: wiring FreeAgencyEnv (a PettingZoo AECEnv) + this model into
 # RLlib's PPO. Adjust import paths for your project layout.
@@ -169,6 +236,7 @@ if __name__ == "__main__":
         .api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False)
         .environment("free_agency_v1")
         .framework("torch")
+        .resources(num_gpus=1)
         .multi_agent(
             policies={"shared_policy": (None, obs_space, act_space, {})},
             policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
@@ -179,9 +247,31 @@ if __name__ == "__main__":
                 # example: "custom_model_config": {"conv_hidden": 64},
             }
         )
+        .experimental(_disable_preprocessor_api=True)
     )
 
     algo = config.build()
-    for i in range(5):
+    log_file = "free_agency_env_win_pct.csv"
+    print("Training has started!")
+    for i in range(10):
+        print(f"Training in iteration {i}")
         result = algo.train()
         print(f"iter {i}: episode_reward_mean={result.get('episode_reward_mean')}")
+        # print("RESULTS!!!")
+        # print(result)
+        print({
+            "env_steps": result["num_env_steps_sampled"],
+            "agent_steps": result["num_agent_steps_sampled"],
+            # "reward": result.get["episode_reward_mean"],
+        })
+
+        print(f"Running 10-season evaluation episode...")
+        eval_metrics = evaluate_and_log_policy(algo, n_seasons=10, log_file = log_file, iteration = i)
+
+        if i % 10 == 0:
+            periodic_path = algo.save(checkpoint_dir="./rllib_checkpoints/periodic")
+            print(f"Periodic checkpoint saved at: {periodic_path}")
+        
+    final_path = algo.save(checkpoint_dir="./rllib_checkpoints/final")
+    print(f"\n Training complete! Final model saved to: {final_path}")
+

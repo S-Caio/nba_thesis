@@ -141,5 +141,5 @@ def simulate_and_reward_season(state: LeagueState, config: LeagueConfig,
     _, order_dict = draft_lottery()
     standings, standings_dict = build_standings(wins, order_dict)
 
-    print_standings(standings, agent_name_mapping)
+    # print_standings(standings, agent_name_mapping)
     return apply_standings(standings, rewards), standings_dict

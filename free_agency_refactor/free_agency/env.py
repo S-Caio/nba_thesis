@@ -54,8 +54,8 @@ class FreeAgencyEnv(AECEnv):
                                       shape=(self.config.n_players, N_PLAYER_COLS), dtype=np.float32),
                 "my_team": Box(low=0, high=np.inf, shape=(self.config.players_per_team,), dtype=np.float32),
                 "win_pct": Box(low=0, high=1, shape=(1,), dtype=np.float32),
-                "team_salary" : Box(low = 0, high = self.config.salary_cap, shape = (1,), dtype = np.int32),
-                "standing" : Box(low=0, high=1, shape=(1,), dtype=np.int32),
+                "team_salary" : Box(low = 0, high = self.config.salary_cap, shape = (1,), dtype = np.float32),
+                "standing" : Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "has_history": Box(low=0, high=1, shape=(1,), dtype=np.float32),
             }) for agent in self.possible_agents
         }
@@ -79,8 +79,8 @@ class FreeAgencyEnv(AECEnv):
             "player_market": self.league.players.astype(np.float32),
             "my_team": self.league.teams[agent].astype(np.float32),
             "win_pct": np.array([self.league.team_win_pct[agent]], dtype=np.float32),
-            "team_salary" : np.array([self.league.team_salaries[agent] / self.config.salary_cap], dtype=np.int32),
-            "standing" : np.array([self.team_standing[agent] / self.config.n_teams], dtype=np.int32),
+            "team_salary" : np.array([self.league.team_salaries[agent] / self.config.salary_cap], dtype=np.float32),
+            "standing" : np.array([self.team_standing[agent] / self.config.n_teams], dtype=np.float32),
             "has_history": np.array([self.league.team_has_history[agent]], dtype=np.float32),
         }
 
@@ -157,7 +157,7 @@ class FreeAgencyEnv(AECEnv):
         self._clear_rewards() 
 
         print(f"\nSimulating Season {self.season}!")
-        print_team_rosters(self.league, self.config, self.agent_name_mapping)
+        # print_team_rosters(self.league, self.config, self.agent_name_mapping)
 
         self.full_draft_order, self.team_standings = simulate_and_reward_season(
             self.league, self.config, self.g_list, self.agent_name_mapping, self.rewards
