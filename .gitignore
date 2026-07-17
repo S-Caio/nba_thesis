@@ -1,0 +1,9 @@
+# Ignore all log files in any directory
+*.log
+
+# Optional: Ignore specific log subdirectories
+logs/
+log/
+
+# Optional: Ignore rotated log files (e.g., server.log.1, server.log.2)
+*.log.*
