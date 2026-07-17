@@ -1,7 +1,7 @@
 import numpy as np
 
 from free_agency.season_runner import (
-    build_standings, apply_standings, update_win_records, PLAYOFF_CUTOFF,
+    build_standings, apply_standings, update_win_records, PLAYOFF_CUTOFF, StandingEntry
 )
 from free_agency.state import LeagueState
 
@@ -10,7 +10,7 @@ def test_build_standings_ranks_by_wins_descending():
     wins = [10, 50, 30]  # team_0=10, team_1=50, team_2=30
     order_dict = {seed: pick for seed, pick in zip(range(14), range(1, 15))}
 
-    standings = build_standings(wins, order_dict)
+    standings, standings_dict = build_standings(wins, order_dict)
 
     assert [s.agent_name for s in standings] == ["team_1", "team_2", "team_0"]
     assert [s.position for s in standings] == [1, 2, 3]
@@ -20,7 +20,7 @@ def test_build_standings_marks_top_16_as_playoffs():
     wins = list(range(30, 0, -1))  # 30 teams, strictly descending win totals
     order_dict = {seed: pick for seed, pick in zip(range(14), range(1, 15))}
 
-    standings = build_standings(wins, order_dict)
+    standings, standings_dict = build_standings(wins, order_dict)
 
     playoff_flags = [s.made_playoffs for s in standings]
     assert playoff_flags[:PLAYOFF_CUTOFF] == [True] * PLAYOFF_CUTOFF
@@ -33,7 +33,7 @@ def test_build_standings_playoff_draft_position_mirrors_reverse_standing():
     wins = list(range(30, 0, -1))
     order_dict = {seed: pick for seed, pick in zip(range(14), range(1, 15))}
 
-    standings = build_standings(wins, order_dict)
+    standings, standings_dict = build_standings(wins, order_dict)
 
     playoff_entries = [s for s in standings if s.made_playoffs]
     assert playoff_entries[0].draft_position == 30  # #1 seed picks dead last
@@ -48,7 +48,7 @@ def test_build_standings_non_playoff_draft_position_comes_from_lottery():
     order_dict = {0: 1}
     order_dict.update({seed: pick for seed, pick in zip(range(1, 14), range(2, 15))})
 
-    standings = build_standings(wins, order_dict)
+    standings, standings_dict = build_standings(wins, order_dict)
 
     worst_team_entry = next(s for s in standings if s.position == 30)
     assert worst_team_entry.draft_position == 1
@@ -61,7 +61,7 @@ def test_build_standings_produces_a_valid_full_draft_order_permutation():
     wins = list(range(30, 0, -1))
     order_dict = {seed: pick for seed, pick in zip(range(14), range(1, 15))}
 
-    standings = build_standings(wins, order_dict)
+    standings, standings_dict = build_standings(wins, order_dict)
 
     draft_positions = sorted(s.draft_position for s in standings)
     assert draft_positions == list(range(1, 31))
@@ -74,7 +74,7 @@ def test_apply_standings_mutates_rewards_and_returns_ordered_draft_list():
     # See test_season_runner.py module docstring / conversation notes.
     wins = list(range(30, 0, -1))
     order_dict = {seed: pick for seed, pick in zip(range(14), range(1, 15))}
-    standings = build_standings(wins, order_dict)
+    standings, standings_dict = build_standings(wins, order_dict)
     rewards = {}
 
     full_draft_order = apply_standings(standings, rewards)
@@ -90,6 +90,7 @@ def test_update_win_records_handles_zero_games_played_without_dividing_by_zero()
         teams={"team_0": np.zeros(1)},
         team_salaries={"team_0": 0.0},
         team_win_pct={"team_0": 0.5},
+        team_standing={"team_0": 15},
         team_has_history={"team_0": 0.0},
     )
 
@@ -97,3 +98,12 @@ def test_update_win_records_handles_zero_games_played_without_dividing_by_zero()
 
     assert state.team_win_pct["team_0"] == 0.5  # falls back, doesn't crash
     assert state.team_has_history["team_0"] == 1.0
+
+
+def test_observe_correct_position():
+    wins = list(range(30, 0, -1))
+    order_dict = {seed: pick for seed, pick in zip(range(14), range(1, 15))}
+    standings, standings_dict = build_standings(wins, order_dict)
+    
+    assert standings_dict["team_0"].position == 1
+    assert standings_dict["team_29"].position == 30

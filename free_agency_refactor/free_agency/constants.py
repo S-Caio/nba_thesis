@@ -40,6 +40,21 @@ class LeagueConfig:
     # Season simulation
     season_noise_scale: float = 10.0
 
+    action_map: np.ndarray = field(init=False, repr=False)
+
+    def __post_init__(self):
+        grid = np.mgrid[
+            0:self.n_players,
+            0:len(self.salary_ranges),
+            0:len(self.contract_lengths)
+        ]
+
+        self.action_map = grid.reshape(3, -1).T
+
     @property
     def n_players(self) -> int:
         return self.n_teams * self.players_per_team
+
+    @property
+    def n_proper_actions(self) -> int:
+        return self.n_players * len(self.salary_ranges) * len(self.contract_lengths)

@@ -61,6 +61,10 @@
 \begin{itemize}
     \item Action masking
     \item Allow teams to see their place in standings + also their strength score next to other teams.
+    \item (To think about at least) Instead of having a fixed player cohort, maybe I can use Deep Sets.
+    \begin{itemize}
+        \item Gemini gave the useful idea of building a player encoder that every player goes through. Then I take the mean or max as ``global context'' variable, which I append to the matrix.
+    \end{itemize}
     \item Allow teams to sign players --- free agency
     \begin{itemize}
         \item Initially agents will be able to observe player ratings, to make the simulation easier.

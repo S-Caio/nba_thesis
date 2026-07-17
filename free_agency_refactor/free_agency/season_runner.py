@@ -60,7 +60,7 @@ def update_win_records(state: LeagueState, wins, games_played) -> None:
 
 # --- 3. Standings / rewards / draft order (pure, testable) ---------------
 
-def build_standings(wins, order_dict: dict[int, int]) -> list[StandingEntry]:
+def build_standings(wins, order_dict: dict[int, int]) -> tuple[list[StandingEntry], dict[str, int]]:
     """
     Pure function: given each team's win total and a lottery result
     (seed -> pick number), returns the full ranked standings with rewards
@@ -70,29 +70,35 @@ def build_standings(wins, order_dict: dict[int, int]) -> list[StandingEntry]:
     """
     ranked_teams = sorted(enumerate(wins), key=lambda item: item[1], reverse=True)
     standings = []
+    standings_dict = {}
 
     for position, (team_idx, total_wins) in enumerate(ranked_teams, start=1):
         agent_name = f"team_{team_idx}"
         made_playoffs = position <= PLAYOFF_CUTOFF
 
+        reward_val = reward_func(position)
         if made_playoffs:
-            reward_val = reward_func(position)
+            # reward_val = reward_func(position)
             draft_position = 31 - position
         else:
             draft_seed = seed_position(position)
             draft_position = order_dict[draft_seed]
-            reward_val = reward_func(draft_position, k=0.4)
+            # reward_val = reward_func(draft_position, k=0.4)
 
-        standings.append(StandingEntry(
+        entry = StandingEntry(
             agent_name=agent_name,
             position=position,
             wins=int(total_wins),
             reward=reward_val,
             draft_position=draft_position,
             made_playoffs=made_playoffs,
-        ))
+        )
 
-    return standings
+        standings.append(entry)
+
+        standings_dict[agent_name] = int(position)
+
+    return standings, standings_dict
 
 
 def apply_standings(standings: list[StandingEntry], rewards: dict[str, float]) -> list[str]:
@@ -127,13 +133,13 @@ def print_standings(standings: list[StandingEntry], agent_name_mapping: dict[str
 
 def simulate_and_reward_season(state: LeagueState, config: LeagueConfig,
                                 game_list, agent_name_mapping: dict[str, str],
-                                rewards: dict[str, float]) -> list[str]:
+                                rewards: dict[str, float]) -> tuple[tuple[str], dict[str, int]]:
     """Same public signature as before -- env.py doesn't need to change."""
     wins, games_played = run_game_simulation(state, config, game_list)
     update_win_records(state, wins, games_played)
 
     _, order_dict = draft_lottery()
-    standings = build_standings(wins, order_dict)
+    standings, standings_dict = build_standings(wins, order_dict)
 
     print_standings(standings, agent_name_mapping)
-    return apply_standings(standings, rewards)
+    return apply_standings(standings, rewards), standings_dict
