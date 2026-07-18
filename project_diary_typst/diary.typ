@@ -54,15 +54,14 @@
 
 = To-Do (short-term)
 
-- Action masking
-- Allow teams to see their place in the standings, as well as their strength score alongside other teams.
+- $checkmark$ Action masking
+- $checkmark$ Allow teams to see their place in the standings, as well as their strength score alongside other teams.
 - (At least worth thinking about.) Instead of having a fixed player cohort, maybe I can use Deep Sets.
   - Gemini suggested a useful idea: build a player encoder that every player passes through. Then take the mean or maximum embedding as a "global context" variable, which is appended to the matrix.
+  - Update on this: I currently use a convolutional layer to pass through all players. The cohort is still a fixed size, but the weight-sharing should help speed up training.
 - Allow teams to sign players (free agency).
   - Initially, agents will be able to observe player ratings to make the simulation simpler.
   - Add player preferences based on a team's past success and the salary they are offering.
-- Create trades for players.
-  - This appears to be difficult because the combinatorial space is huge, so I'll need to read more about existing approaches.
 - $checkmark$ Player evolution (easier)
 - $checkmark$ Player retirement
 - $checkmark$ New players entering the league
@@ -86,6 +85,18 @@
 
 #pagebreak()
 = Chronological Order
+
+== July 17, 2026
+It has been a long time since I last wrote here, unfortunately. I have the sense that I only want to put very "official-sounding" developments here in this diary, but I don't think this is productive. Writing even short entries helps to keep me on track.
+
+Well, here is a brief summary of all that has happened meanwhile:
+- I attended the ABM course at the Barcelona School of Economics. I learnt some interesting things about ABMs, frontier techniques, and I was especially interested in how they calibrate parameters. They presented two approaches that I found especially interesting: optimising a surrogate model, and approximate bayesian computation. Both are easier to do with traditional ABMs though. I wonder if I can pass in environment parameters to my RL agents as observations, such that they could generalise to different parameter settings. Then doing approximate Bayesian computation would be a lot easier.
+- I added some new features. The action space is now discrete, which was needed for _action masking_. And I now added the "pass" action, which allows the player to skip player signing if need be. This is only available once the agent has $"max number of players" - 1 $ on their team. Otherwise they are forced to sign players.
+- I put the scripts on the Arnes cluster and set up the environment (took a while to get everything working), but now I officially ran my training script there with a GPU! Very happy about this.
+
+The next order of business is to get players to actually care about money. For now they just go to the first bidder, but I will start having teams compete for signings. For simplicity, players will just be money-motivated --- they will simply pick the team that offers the most money (not even discounted; just $"years" dot "salary"$). Later on I can add some preference for winning teams, but that is a later development.
+
+I will go to the summer school in London soon, so I might not work much until then. Still, I am enjoying this project. I just need to take it more seriously moving forward.
 
 == July 4, 2026
 
