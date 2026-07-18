@@ -19,4 +19,4 @@ print(ray.available_resources())
 print("Shutting down ray.")
 ray.shutdown()
 
-print("Ray has been shutdown. The real work starts NOW")
+print("Ray has been shutdown. The real work starts NOW!")

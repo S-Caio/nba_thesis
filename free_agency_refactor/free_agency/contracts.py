@@ -49,8 +49,11 @@ def make_action_mask(state, config, team):
     
     # Check to see if signing doesn't exceed salary cap
     salary_values = config.salary_ranges[action_map[:, ACTION_SALARY]]
+
+    min_salary = config.salary_ranges[0]
+    is_min_contract = (salary_values == min_salary)
     salary_mask = (
-        salary + salary_values <= config.salary_cap
+        (salary + salary_values <= config.salary_cap) | (is_min_contract)
     )
     
     # Check to see if signing the player doesn't take the team above the maximum number of players
@@ -93,8 +96,15 @@ def handle_signing(state: LeagueState, config: LeagueConfig, agent: str, action)
     if state.players[player_id, TEAM] != FREE_AGENT_MARKER:
         return  # already signed elsewhere
 
-    if state.team_salaries[agent] + offered_salary > config.salary_cap:
+
+    min_salary = config.salary_ranges[0]
+    is_min_contract = (offered_salary == min_salary)
+
+    # Block the signing if it exceeds the cap, UNLESS it's a minimum exception contract
+    if (state.team_salaries[agent] + offered_salary > config.salary_cap) and not is_min_contract:
         return  # would break the cap
+    # if state.team_salaries[agent] + offered_salary > config.salary_cap:
+    #     return  # would break the cap
 
     team_vector = state.teams[agent]
     empty_slots = np.where(team_vector == 0.0)[0]

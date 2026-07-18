@@ -29,7 +29,8 @@ class LeagueConfig:
     n_seasons: int = 10
 
     # Signing action space
-    salary_ranges: np.ndarray = field(default_factory=lambda: np.arange(0, 35, 5))
+    salary_ranges: np.ndarray = field(default_factory=lambda: np.array([1, 5, 10, 15, 20, 25, 30]))
+    # salary_ranges: np.ndarray = field(default_factory=lambda: np.arange(0, 35, 5))
     contract_lengths: np.ndarray = field(default_factory=lambda: np.arange(1, 6))
 
     # Rookie draft

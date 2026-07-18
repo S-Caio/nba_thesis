@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
-#SBATCH --time=04:00:00
+#SBATCH --time=10:00:00
 #SBATCH --output=logs/train_%j.log       # Captures standard output (stdout)
 #SBATCH --error=logs/train_%j.err        # Captures ALL errors and warnings (stderr)
 #SBATCH --gres=gpu:1                     # Request 1 GPU for your training

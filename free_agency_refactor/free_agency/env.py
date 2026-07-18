@@ -130,8 +130,8 @@ class FreeAgencyEnv(AECEnv):
         # max_draft_moves = self.config.n_teams * self.config.players_per_team
 
         # if self.num_moves < max_draft_moves:
-        if self.num_moves == 0:
-            print(f"\n--- Welcome to Season {self.season} Free Agency! ---")
+        # if self.num_moves == 0:
+        #     print(f"\n--- Welcome to Season {self.season} Free Agency! ---")
         handle_signing(self.league, self.config, current_agent, action)
 
         self.num_moves += 1
@@ -145,10 +145,10 @@ class FreeAgencyEnv(AECEnv):
         self.agent_selection = self._agent_selector.next()
         self._accumulate_rewards()
         
-        print("--- Final Cumulative Rewards (Direct Inspection) ---")
-        for agent in self.possible_agents:
-            real_name = self.agent_name_mapping[agent]
-            print(f"{real_name:<25}: {self._cumulative_rewards[agent]:.4f}")
+        # print("--- Final Cumulative Rewards (Direct Inspection) ---")
+        # for agent in self.possible_agents:
+        #     real_name = self.agent_name_mapping[agent]
+        #     print(f"{real_name:<25}: {self._cumulative_rewards[agent]:.4f}")
 
     def _run_season_boundary(self) -> None:
         """Everything that happens once a season's draft is complete:
@@ -156,7 +156,7 @@ class FreeAgencyEnv(AECEnv):
         rookie draft, and either advance or terminate."""
         self._clear_rewards() 
 
-        print(f"\nSimulating Season {self.season}!")
+        # print(f"\nSimulating Season {self.season}!")
         # print_team_rosters(self.league, self.config, self.agent_name_mapping)
 
         self.full_draft_order, self.team_standings = simulate_and_reward_season(

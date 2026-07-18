@@ -24,6 +24,10 @@ Observation handling:
 
 import torch
 import torch.nn as nn
+import numpy as np
+import pandas as pd
+import os
+import time
 
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
@@ -219,6 +223,8 @@ if __name__ == "__main__":
 
     # from free_agency_env import FreeAgencyEnv  # your module
 
+    ITER = 10
+
     def env_creator(config):
         # PettingZooEnv wraps an AECEnv for RLlib's multi-agent API.
         return PettingZooEnv(FreeAgencyEnv())  # noqa: F821 (import above)
@@ -250,28 +256,37 @@ if __name__ == "__main__":
         .experimental(_disable_preprocessor_api=True)
     )
 
-    algo = config.build()
+    algo = config.build_algo()
     log_file = "free_agency_env_win_pct.csv"
     print("Training has started!")
-    for i in range(10):
+    start_time = time.time()
+
+    for i in range(ITER):
         print(f"Training in iteration {i}")
         result = algo.train()
-        print(f"iter {i}: episode_reward_mean={result.get('episode_reward_mean')}")
-        # print("RESULTS!!!")
-        # print(result)
+        
+        # Extract metrics safely from the nested env_runners dictionary
+        # env_runners = result.get("env_runners", {})
+        # ep_reward_mean = env_runners.get("episode_reward_mean")
+        # ep_len_mean = env_runners.get("episode_len_mean")
+        # ep_count = env_runners.get("num_episodes")
+
+        # print(f"iter {i}: episode_reward_mean={ep_reward_mean} (over {ep_count} episodes, avg len: {ep_len_mean})")
+        
         print({
-            "env_steps": result["num_env_steps_sampled"],
-            "agent_steps": result["num_agent_steps_sampled"],
-            # "reward": result.get["episode_reward_mean"],
+            "env_steps": result.get("num_env_steps_sampled"),
+            "agent_steps": result.get("num_agent_steps_sampled"),
         })
 
         print(f"Running 10-season evaluation episode...")
-        eval_metrics = evaluate_and_log_policy(algo, n_seasons=10, log_file = log_file, iteration = i)
+        eval_metrics = evaluate_and_log_policy(algo, n_seasons=10, csv_path = log_file, iteration = i)
 
-        if i % 10 == 0:
+        if i % 50 == 0:
             periodic_path = algo.save(checkpoint_dir="./rllib_checkpoints/periodic")
             print(f"Periodic checkpoint saved at: {periodic_path}")
         
     final_path = algo.save(checkpoint_dir="./rllib_checkpoints/final")
     print(f"\n Training complete! Final model saved to: {final_path}")
+    end_time = time.time()
+    print(f"Training for {ITER} iterations took {end_time - start_time}")
 
