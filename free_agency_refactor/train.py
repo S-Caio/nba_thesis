@@ -41,7 +41,9 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
         action_mask  : (n_actions,)
         player_market: (n_players, N_PLAYER_COLS)
         my_team      : (players_per_team,)
+        my_team_rating : (1,)
         win_pct      : (1,)
+        season : (1, )
         team_salary  : (1,)
         standing     : (1,)
         has_history  : (1,)
@@ -69,26 +71,26 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
         # rank-neighbors (players just above/below it in rating).
         self.player_conv = nn.Sequential(
             nn.Conv1d(self.n_player_cols, conv_hidden, kernel_size=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv1d(conv_hidden, player_embed_dim, kernel_size=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
         )
         player_feat_dim = player_embed_dim * self.n_players  # flatten preserves order
 
         self.team_mlp = nn.Sequential(
             nn.Linear(self.players_per_team, 64),
-            nn.ReLU(),
+            nn.LeakyReLU(),
         )
 
-        scalar_dim = 4  # win_pct, team_salary, standing, has_history
+        scalar_dim = 6  # win_pct, team_salary, standing, has_history
 
         combined_dim = player_feat_dim + 64 + scalar_dim
 
         self.trunk = nn.Sequential(
             nn.Linear(combined_dim, 512),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(512, 256),
-            nn.ReLU(),
+            nn.LeakyReLU(),
         )
 
         self.logits_layer = nn.Linear(256, num_outputs)
@@ -107,7 +109,9 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
         action_mask = obs["action_mask"].float()
         player_market = obs["player_market"].float()   # (B, n_players, n_cols)
         my_team = obs["my_team"].float()                # (B, players_per_team)
+        my_team_rating = obs["my_team_rating"].float()
         win_pct = obs["win_pct"].float()
+        season = obs["season"].float()
         team_salary = obs["team_salary"].float()
         standing = obs["standing"].float()
         has_history = obs["has_history"].float()
@@ -119,7 +123,7 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
 
         team_feat = self.team_mlp(my_team)
 
-        scalars = torch.cat([win_pct, team_salary, standing, has_history], dim=-1)
+        scalars = torch.cat([my_team_rating, win_pct, season, team_salary, standing, has_history], dim=-1)
 
         combined = torch.cat([x, team_feat, scalars], dim=-1)
         trunk_out = self.trunk(combined)
@@ -223,7 +227,7 @@ if __name__ == "__main__":
 
     # from free_agency_env import FreeAgencyEnv  # your module
 
-    ITER = 10
+    ITER = 10_000
 
     def env_creator(config):
         # PettingZooEnv wraps an AECEnv for RLlib's multi-agent API.
@@ -266,12 +270,12 @@ if __name__ == "__main__":
         result = algo.train()
         
         # Extract metrics safely from the nested env_runners dictionary
-        # env_runners = result.get("env_runners", {})
-        # ep_reward_mean = env_runners.get("episode_reward_mean")
-        # ep_len_mean = env_runners.get("episode_len_mean")
-        # ep_count = env_runners.get("num_episodes")
+        env_runners = result.get("env_runners", {})
+        ep_reward_mean = env_runners.get("episode_reward_mean")
+        ep_len_mean = env_runners.get("episode_len_mean")
+        ep_count = env_runners.get("num_episodes")
 
-        # print(f"iter {i}: episode_reward_mean={ep_reward_mean} (over {ep_count} episodes, avg len: {ep_len_mean})")
+        print(f"iter {i}: episode_reward_mean={ep_reward_mean} (over {ep_count} episodes, avg len: {ep_len_mean})")
         
         print({
             "env_steps": result.get("num_env_steps_sampled"),

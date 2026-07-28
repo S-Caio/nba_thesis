@@ -9,7 +9,7 @@ No PettingZoo env required.
 """
 import numpy as np
 
-from .constants import LeagueConfig, RATING, TEAM, CONTRACT_LEN, SALARY
+from .constants import LeagueConfig, RATING, TEAM, CONTRACT_LEN, SALARY, OFFERS
 from .state import LeagueState
 
 
@@ -120,6 +120,85 @@ def handle_signing(state: LeagueState, config: LeagueConfig, agent: str, action)
     state.players[player_id, TEAM] = agent_numeric_idx + 1
     state.players[player_id, CONTRACT_LEN] = chosen_length
     state.players[player_id, SALARY] = offered_salary
+
+
+def submit_offer(state: LeagueState, config: LeagueConfig, agent: str, action) -> None:
+    """
+    Record `agent`'s offer for this round; does NOT sign anyone.
+    Same guard clauses as before, just deferred execution.
+    """
+    if action == config.n_proper_actions:
+        return  # NULL action -- no offer this round
+
+    player_id, salary_idx, contract_len_idx = decode_flat_action(action, config)
+    offered_salary = config.salary_ranges[salary_idx]
+
+    if state.players[player_id, TEAM] != FREE_AGENT_MARKER:
+        return  # already signed elsewhere
+
+    min_salary = config.salary_ranges[0]
+    is_min_contract = (offered_salary == min_salary)
+    if (state.team_salaries[agent] + offered_salary > config.salary_cap) and not is_min_contract:
+        return  # would break the cap
+
+    if not np.any(state.teams[agent] == 0.0):
+        return  # roster full
+
+    team_idx = int(agent.split("_")[1])
+    state.offer_player[team_idx] = player_id
+    state.offer_salary_idx[team_idx] = salary_idx
+    state.offer_length_idx[team_idx] = contract_len_idx
+
+    state.players[player_id, OFFERS] += 1 
+
+
+def resolve_offers(state: LeagueState, config: LeagueConfig, rng: np.random.Generator) -> None:
+    """
+    Called once per round (all teams have acted). Each player goes to
+    the highest bidder; ties broken randomly. Losing offers are simply
+    discarded -- the team's turn was spent, nothing else happens.
+    """
+    made = state.offer_player >= 0
+    if not np.any(made):
+        return
+
+    team_idxs = np.nonzero(made)[0]
+    player_ids = state.offer_player[team_idxs]
+    salaries = config.salary_ranges[state.offer_salary_idx[team_idxs]]
+    lengths = config.contract_lengths[state.offer_length_idx[team_idxs]]
+
+    # Sort by salary desc; random float as tiebreak. Cheap: len == n_teams.
+    tiebreak = rng.random(len(team_idxs))
+    order = np.lexsort((tiebreak, -salaries))
+
+    signed_players = set()
+    for i in order:
+        pid = int(player_ids[i])
+        if pid in signed_players:
+            continue  # a higher (or tie-won) offer already took this player
+        signed_players.add(pid)
+
+        team_idx = int(team_idxs[i])
+        agent = f"team_{team_idx}"
+
+        empty_slots = np.where(state.teams[agent] == 0.0)[0]
+        if len(empty_slots) == 0:
+            continue  # defensive: shouldn't happen, checked at submission
+
+        first_empty_slot = empty_slots[0]
+        state.teams[agent][first_empty_slot] = state.players[pid, RATING]
+        state.team_salaries[agent] += salaries[i]
+
+        state.players[pid, TEAM] = team_idx + 1
+        state.players[pid, CONTRACT_LEN] = lengths[i]
+        state.players[pid, SALARY] = salaries[i]
+
+    # Clear buffers for next round
+    state.offer_player[:] = -1
+    state.offer_salary_idx[:] = -1
+    state.offer_length_idx[:] = -1
+
+    state.players[:, OFFERS] = 0.0 
 
 
 def contract_update(state: LeagueState) -> None:

@@ -7,3 +7,5 @@ log/
 
 # Optional: Ignore rotated log files (e.g., server.log.1, server.log.2)
 *.log.*
+
+rllib_checkpoints

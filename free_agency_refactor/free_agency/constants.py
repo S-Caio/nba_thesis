@@ -17,8 +17,10 @@ TEAM = 1
 AGE = 2
 CONTRACT_LEN = 3
 SALARY = 4
+OFFERS = 5
 
-N_PLAYER_COLS = 5
+
+N_PLAYER_COLS = 6
 
 
 @dataclass

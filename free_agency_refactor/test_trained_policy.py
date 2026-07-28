@@ -115,5 +115,5 @@ def inspect_trained_policy(checkpoint_path):
     ray.shutdown()
 
 if __name__ == "__main__":
-    FINAL_CHECKPOINT = "./rllib_checkpoints/final"
+    FINAL_CHECKPOINT = "./rllib_checkpoints/periodic"
     inspect_trained_policy(FINAL_CHECKPOINT)

@@ -59,12 +59,16 @@
 - (At least worth thinking about.) Instead of having a fixed player cohort, maybe I can use Deep Sets.
   - Gemini suggested a useful idea: build a player encoder that every player passes through. Then take the mean or maximum embedding as a "global context" variable, which is appended to the matrix.
   - Update on this: I currently use a convolutional layer to pass through all players. The cohort is still a fixed size, but the weight-sharing should help speed up training.
-- Allow teams to sign players (free agency).
+- $checkmark$ Allow teams to sign players (free agency).
   - Initially, agents will be able to observe player ratings to make the simulation simpler.
   - Add player preferences based on a team's past success and the salary they are offering.
 - $checkmark$ Player evolution (easier)
 - $checkmark$ Player retirement
 - $checkmark$ New players entering the league
+- Add lagged observations
+- Add one extra simulation round
+- Create heuristic policy
+- Create league of opponents
 
 = To-Do (long-term)
 
@@ -85,6 +89,53 @@
 
 #pagebreak()
 = Chronological Order
+
+== July 28, 2026
+
+Ok, the UCL summer school is done and I am back to work. Yesterday I added some important features. First, the agent can now observe its aggregate team strength ($sum_i s_i$), and also where it is within the episode --- what percentage of the episode has passed. I first wanted to give as much information as possible to the system, but I think I might take it away, as the agents probably shift their behaviour to more win-now towards the end of the episode, whereas I want their behaviour to be stable irrespective of where we are in the episode.
+
+And I also now added a bidding system, so agents place bids on players every round and players go to where they are offered the highest salary. Some cool things have come from this.
+
+In the plot below I show the distribution of win percentages from teams in the league in the last 100 updates of the network. After every update, I run a little episode and record it. And now I facet the plot according to the season we are in.
+
+#figure(
+  image("figs/last_updates_win_pct_after_salaries.png", width : 75%)
+)
+
+So the first season is especially interesting. There seems to be a strong case of bi-modality here, perhaps with many teams wanting to set themselves up with future talent. In fact, it seems like almost the exact mirror of the real NBA distribution. 
+
+Three thoughts about this: the thing where I track the season percentage might be harming things here, as teams know which point of the simualtion they are in. At certain seasons they might switch strategy because they know the end is near. I will probably deactivate that. 
+
+Second, I question a little whether I should keep this structure where teams start with a blank slate; it might be more realistic to randomly allocate players, discard the first season, and see what teams do afterwards. The advantage here is realism. GMs come in with teams that already have strengths and faults. The path dependence means that GMS have to adapt their plans according to their current team structure. However, real-life GMs have more tools at their disposal than just signing players. They can trade for picks/players or rest members of their team. This hasn't been implemented (yet), so maybe the current approach is still defensible.
+
+Third, I have to check my conditions to move onto the next season. If the condition is that teams must have at least 9 players, then one team with 10 would have an advantage, even if a team with 9 players would in fact prefer to sign somebody else. I will add one extra bidding round.
+// So this is kind of cool, right? Win percentages are very even in the beginning, but then it mophs into the bell curve as time progresses. What I especially like is that, in early seasons, there seems to be a bi-modality thing going on. It is the reverse of the NBA pattern, which has more winning teams than losing teams, but this is an encouraging development nonetheless!
+
+I think I will remove the season tracking. A more useful gauge would probably be some historical metrics, like win percentage last two seasons and team strength last two seasons.
+
+Here is another nice plot. I ran a sample episode after every single update to the neural network to get an idea of how development was going. Then I mark the worst team at the start of each episode and show how it develops throughout the seasons:
+
+#figure(
+  image("figs/traj_worst_teams.png", width : 75%)
+)
+
+So the trajectory indicates to me that there is a significant improvement after the team goes through the draft, but that is still not enough to win big. Instead, teams remain around the 50% win mark. Maybe I need to adjust how good I make my rookies.
+
+
+== July 18, 2026
+Little update! I ran the training script for 100 iterations just to see if I could spot any patterns. Seems like the model hasn't exactly learnt though! Look at the Wasserstein distance between a 10-season episode and the actual NBA here:
+
+#figure(
+  image("figs/wasserstein_first_try.pdf.png", width : 75%)
+)
+
+Bear in mind this is just 1 episode. Maybe a few simulations would make the signal slightly clearer. Still, must do more work. I will run it for thousands of iterations and see what we get.
+
+If that doesn't work, I still have a few tricks up my sleeve:
+- A "league" sort of training where I can put frozen versions of my model + some heuristic policies.
+- Gotta make salaries matter more; players will go to the team that offers the highest salary
+
+
 
 == July 17, 2026
 It has been a long time since I last wrote here, unfortunately. I have the sense that I only want to put very "official-sounding" developments here in this diary, but I don't think this is productive. Writing even short entries helps to keep me on track.

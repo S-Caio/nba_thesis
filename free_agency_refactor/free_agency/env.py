@@ -16,7 +16,8 @@ from gymnasium.utils import seeding
 
 from .constants import LeagueConfig, N_PLAYER_COLS
 from .state import LeagueState, new_league_state
-from .contracts import handle_signing, contract_update, make_action_mask
+# from .contracts import handle_signing, contract_update, make_action_mask
+from .contracts import submit_offer, resolve_offers, contract_update, make_action_mask
 from .rosters import rebuild_rosters, print_team_rosters
 from .player_lifecycle import player_update, run_rookie_draft
 from .season_sim import generate_exact_nba_schedule
@@ -53,7 +54,9 @@ class FreeAgencyEnv(AECEnv):
                 "player_market": Box(low=0, high=np.inf,
                                       shape=(self.config.n_players, N_PLAYER_COLS), dtype=np.float32),
                 "my_team": Box(low=0, high=np.inf, shape=(self.config.players_per_team,), dtype=np.float32),
+                "my_team_rating" : Box(low = 0, high = np.inf, shape = (1, ), dtype = np.float32),
                 "win_pct": Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                "season" : Box(low = 0, high = 1, shape=(1,), dtype = np.float32),
                 "team_salary" : Box(low = 0, high = self.config.salary_cap, shape = (1,), dtype = np.float32),
                 "standing" : Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "has_history": Box(low=0, high=1, shape=(1,), dtype=np.float32),
@@ -78,7 +81,9 @@ class FreeAgencyEnv(AECEnv):
             "action_mask" : make_action_mask(self.league, self.config, agent),
             "player_market": self.league.players.astype(np.float32),
             "my_team": self.league.teams[agent].astype(np.float32),
+            "my_team_rating" : np.array([np.sum(self.league.teams[agent])], dtype = np.float32),
             "win_pct": np.array([self.league.team_win_pct[agent]], dtype=np.float32),
+            "season" : np.array([self.season / self.config.n_seasons], dtype = np.float32),
             "team_salary" : np.array([self.league.team_salaries[agent] / self.config.salary_cap], dtype=np.float32),
             "standing" : np.array([self.team_standing[agent] / self.config.n_teams], dtype=np.float32),
             "has_history": np.array([self.league.team_has_history[agent]], dtype=np.float32),
@@ -88,8 +93,8 @@ class FreeAgencyEnv(AECEnv):
         pass
 
     def reset(self, seed=None, options=None):
-        if seed is not None:
-            self.np_random, self.np_random_seed = seeding.np_random(seed)
+        self.np_random, self.np_random_seed = seeding.np_random(seed)
+
 
         self.agents = self.possible_agents[:]
         self.rewards = {agent: 0 for agent in self.agents}
@@ -132,11 +137,14 @@ class FreeAgencyEnv(AECEnv):
         # if self.num_moves < max_draft_moves:
         # if self.num_moves == 0:
         #     print(f"\n--- Welcome to Season {self.season} Free Agency! ---")
-        handle_signing(self.league, self.config, current_agent, action)
+        # handle_signing(self.league, self.config, current_agent, action)
+
+        submit_offer(self.league, self.config, current_agent, action)
 
         self.num_moves += 1
 
         if self._agent_selector.is_last():
+            resolve_offers(self.league, self.config, self.np_random)
             if self._league_ready():
                 self._run_season_boundary()
             else:

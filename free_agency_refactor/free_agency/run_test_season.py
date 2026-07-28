@@ -7,12 +7,16 @@ Run: python -m free_agency.run_test_season
 """
 from free_agency.env import FreeAgencyEnv
 from free_agency.constants import LeagueConfig
+import time
 
 
 def run_one_season(seed: int = 0):
     config = LeagueConfig(n_teams=30, players_per_team=10, n_seasons=1)
     env = FreeAgencyEnv(config=config)
+    start_time = time.time()
     env.reset(seed=seed)
+    end_time = time.time()
+    print(f"Reset time: {end_time - start_time}")
 
     steps = 0
     for agent in env.agent_iter():

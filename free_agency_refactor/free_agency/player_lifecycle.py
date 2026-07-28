@@ -12,11 +12,11 @@ import numpy as np
 from scipy import stats
 
 from .constants import LeagueConfig, RATING, TEAM, AGE, CONTRACT_LEN, SALARY
-from .state import LeagueState
+from .state import LeagueState, _generate_players
 from .rosters import get_team_counts
 
 # Plug in your real implementations here:
-from .player_curves import evolve_func, retirement_risk
+from .utils import evolve_func, retirement_risk
 
 
 def player_update(state: LeagueState) -> None:
@@ -37,13 +37,20 @@ def player_update(state: LeagueState) -> None:
 
 def new_entrants(n_new_players: int, age_mean: float = 21, age_std: float = 1,
                   rating_shape: float = 0.8) -> np.ndarray:
-    ratings = stats.lognorm.rvs(loc=0, s=rating_shape, size=n_new_players)
-    teams = np.zeros(n_new_players)
-    ages = np.clip(np.round(np.random.normal(age_mean, age_std, size=n_new_players)), 19, 40)
-    contract_lens = np.zeros(n_new_players)
-    salaries = np.zeros(n_new_players)
 
-    entrants = np.vstack([ratings, teams, ages, contract_lens, salaries]).T
+    entrants = _generate_players(
+        n_players = n_new_players,
+        age_mean = age_mean,
+        age_std=age_std,
+        rating_shape=rating_shape
+    )
+    # ratings = stats.lognorm.rvs(loc=0, s=rating_shape, size=n_new_players)
+    # teams = np.zeros(n_new_players)
+    # ages = np.clip(np.round(np.random.normal(age_mean, age_std, size=n_new_players)), 19, 40)
+    # contract_lens = np.zeros(n_new_players)
+    # salaries = np.zeros(n_new_players)
+
+    # entrants = np.vstack([ratings, teams, ages, contract_lens, salaries]).T
     return entrants[np.argsort(-entrants[:, RATING])]
 
 
