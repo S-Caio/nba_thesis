@@ -65,10 +65,15 @@
 - $checkmark$ Player evolution (easier)
 - $checkmark$ Player retirement
 - $checkmark$ New players entering the league
-- Add lagged observations
+- Add lagged observations of team strength and team win percentage
 - Add one extra simulation round
 - Create heuristic policy
 - Create league of opponents
+- $checkmark$ Make players care about salary $dot$ years, not just salary
+- Add future cap hits into list of observables: salaries that we already know will be in the next few season's cap.
+- Make decay plot for real NBA
+- Use reward function to look at a decay plot x average reward during episode sort of plot.
+
 
 = To-Do (long-term)
 
@@ -120,6 +125,20 @@ Here is another nice plot. I ran a sample episode after every single update to t
 )
 
 So the trajectory indicates to me that there is a significant improvement after the team goes through the draft, but that is still not enough to win big. Instead, teams remain around the 50% win mark. Maybe I need to adjust how good I make my rookies.
+
+Looking at the same plot, but in the scale of rank within a season, we find that it is quite possible for these teams to reach the upper echelon of wins, but that the range itself is quite wide:
+
+#figure(
+  image("figs/traj_worst_teams_rank.png", width : 75%)
+)
+
+And I also plotted the mean rank of teams after their initial season, seen in the Figure below. What is chiefly important here is the decay that teams face after finishing first --- do they retain an advantage after finishing well, or does that trickle away? And does it change slowly or quickly? We see that there is some persistence from one season to the next. Teams that performed well in the first season tend to still be amongst the best in season 2, but that success quickly fades away. By seasons 3 and 4 the team now has an average finishing position. It is important, of course, to remember that this is just the average rank, which is hiding a lot of heterogeneity. Some teams might have become the worst in the league, some remained at the top for ages. The contention period for a team is around 2 or 3 seasons then, which I think is decently ok. I might extend it a little. I should also make this plot for the real NBA as well.
+
+
+#figure(
+  image("figs/decay_after_position.png", width : 75%)
+)
+
 
 
 == July 18, 2026

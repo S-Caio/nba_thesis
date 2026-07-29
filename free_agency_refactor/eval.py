@@ -78,6 +78,182 @@ time_plot = (
 )
 time_plot
 # plot_df
+
+#%%
+# Rank teams within each iteration-season pair by value
+# ascending=True means rank 1 = worst (lowest win_pct); flip if you want rank 1 = best
+win_pct["rank"] = (
+    win_pct.groupby(["iteration", "evaluation_season"])["value"]
+    .rank(method = "min", ascending = False)
+)
+
+# Re-run the worst-team marking on this ranked df (or just merge rank back into worst_team_df)
+worst_team_df = mark_worst_team_season0(win_pct)
+
+plot_df_rank = worst_team_df[
+    (worst_team_df["worst_team_flag"] == True) &
+    (worst_team_df["iter_group"] == worst_team_df["iter_group"].max())
+]
+plot_df_rank = plot_df_rank.reset_index()
+
+#%%
+
+# plot_df_rank
+rank_plot = (
+    ggplot(plot_df_rank, aes(x = "evaluation_season", y = "rank")) +
+    geom_line(aes(group = "iteration"), alpha = 0.2, size = 1, color = "lightgreen") +
+    geom_smooth(method = "loess", color = "forestgreen", size = 1.2, se = True) +
+    scale_y_reverse() +
+    labs(title = "Trajectories (in terms of rank) for the last 50 iterations")
+)
+rank_plot
+
+#%%
+# 1. Grab each team's rank at season 0, per iteration
+
+win_pct_last["rank"] = (
+    win_pct.groupby(["iteration", "evaluation_season"])["value"]
+    .rank(method = "min", ascending = False)
+)
+
+initial_rank = (
+    win_pct_last[win_pct_last["evaluation_season"] == 0]
+    .loc[:, ["iteration", "variable", "rank"]]
+    .rename(columns={"rank": "initial_rank"})
+)
+
+# 2. Merge that starting rank onto every row for that team/iteration
+win_pct_with_initial = win_pct_last.merge(
+    initial_rank, on=["iteration", "variable"], how="left"
+)
+
+# 3. Keep only the "other" seasons (exclude season 0 itself, since that's the conditioning variable)
+other_seasons = win_pct_with_initial[win_pct_with_initial["evaluation_season"] != 0]
+
+# 4. E[rank in other seasons | initial_rank]
+avg_rank_by_initial = (
+    other_seasons.groupby("initial_rank")["rank"]
+    .agg(mean_rank="mean", std_rank="std", n="count")
+    .reset_index()
+)
+avg_rank_by_initial["se"] = avg_rank_by_initial["std_rank"] / np.sqrt(avg_rank_by_initial["n"])
+
+#%%
+p = (
+    ggplot(avg_rank_by_initial, aes(x="initial_rank", y="mean_rank")) +
+    geom_ribbon(
+        aes(ymin="mean_rank - se", ymax="mean_rank + se"),
+        alpha=0.2
+    ) +
+    geom_line() +
+    geom_point() +
+    geom_abline(slope=1, intercept=0, linetype="dashed", color="grey") +
+    xlim(0, 30) +
+    ylim(0, 30) +
+    labs(
+        x="Rank in season 0",
+        y="Average rank in subsequent seasons"
+    )
+)
+p
+
+#%%
+# E[rank at season s | initial_rank], for each s separately
+decay_df_full = (
+    win_pct_with_initial.groupby(["evaluation_season", "initial_rank"])["rank"]
+    .mean()
+    .reset_index()
+)
+
+first_season = decay_df_full[decay_df_full["evaluation_season"] == 0]
+
+decay_plot = (
+    ggplot(decay_df_full, aes(x="evaluation_season + 1", y="rank", color="initial_rank", group="initial_rank")) +
+    geom_line() +
+    geom_point(data = first_season, size = 2) +
+    scale_color_cmap(cmap_name="viridis") +
+    scale_x_continuous(breaks = range(1, 11)) +
+    labs(x="Season", y="E[rank | initial rank]")
+)
+decay_plot
+
+#%%
+from free_agency.utils import reward_func
+
+win_pct["reward"] = win_pct["rank"].apply(reward_func)
+
+episode_reward = (
+    win_pct.groupby(["iteration", "variable"])["reward"]
+    .sum()
+    .reset_index(name="episode_reward")
+)
+
+# bring in initial_rank (rank at season 0) — reuse your earlier merge
+episode_reward = episode_reward.merge(
+    initial_rank, on=["iteration", "variable"], how="left"
+)
+
+learning_curve = (
+    episode_reward.merge(win_pct[["iteration", "iter_group"]].drop_duplicates(), on="iteration")
+    .groupby("iter_group")["episode_reward"]
+    .agg(mean_reward="mean", std_reward="std", n="count")
+    .reset_index()
+)
+learning_curve["se"] = learning_curve["std_reward"] / np.sqrt(learning_curve["n"])
+
+p_learning_curve = (
+    ggplot(learning_curve, aes(x="iter_group", y="mean_reward")) +
+    geom_ribbon(aes(ymin="mean_reward - se", ymax="mean_reward + se"), alpha=0.2) +
+    geom_line() +
+    geom_point(size=1) +
+    labs(x="Iteration group", y="Mean episode reward")
+)
+p_learning_curve
+
+#%%
+last_group = win_pct["iter_group"].max()
+
+episode_reward_last = episode_reward.merge(
+    win_pct[["iteration", "iter_group"]].drop_duplicates(), on="iteration"
+)
+episode_reward_last = episode_reward_last[episode_reward_last["iter_group"] == last_group]
+
+reward_by_initial_rank_last = (
+    episode_reward_last.groupby("initial_rank")["episode_reward"]
+    .agg(mean_reward="mean", std_reward="std", n="count")
+    .reset_index()
+)
+reward_by_initial_rank_last["se"] = reward_by_initial_rank_last["std_reward"] / np.sqrt(reward_by_initial_rank_last["n"])
+
+p_reward_by_initial_last = (
+    ggplot(reward_by_initial_rank_last, aes(x="initial_rank", y="mean_reward")) +
+    geom_ribbon(aes(ymin="mean_reward - se", ymax="mean_reward + se"), alpha=0.2) +
+    geom_line() +
+    geom_point() +
+    labs(x="Rank in season 0", y="E[total episode reward | initial rank]",
+         title=f"iter_group = {last_group}")
+)
+p_reward_by_initial_last
+
+#%%
+win_pct_last_group = win_pct_with_initial[win_pct_with_initial["iter_group"] == last_group]
+
+win_pct_last_group["reward"] = win_pct_last_group["rank"].apply(reward_func)
+
+reward_decay_df_last = (
+    win_pct_last_group.groupby(["evaluation_season", "initial_rank"])["reward"]
+    .mean()
+    .reset_index()
+)
+
+p_reward_decay_last = (
+    ggplot(reward_decay_df_last, aes(x="evaluation_season + 1", y="reward", color="initial_rank", group="initial_rank")) +
+    geom_line() +
+    scale_color_cmap(cmap_name="viridis") +
+    scale_x_continuous(breaks=range(1, 11)) +
+    labs(x="Season", y="E[reward | initial rank]", title=f"iter_group = {last_group}")
+)
+p_reward_decay_last
 #%%
 # Bringing in real NBA data
 
