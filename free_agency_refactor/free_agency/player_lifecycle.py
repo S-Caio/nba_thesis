@@ -36,7 +36,7 @@ def player_update(state: LeagueState) -> None:
 
 
 def new_entrants(n_new_players: int, age_mean: float = 21, age_std: float = 1,
-                  rating_shape: float = 0.8) -> np.ndarray:
+                  rating_shape: float = 0.85) -> np.ndarray:
 
     entrants = _generate_players(
         n_players = n_new_players,

@@ -57,11 +57,13 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
         # flattened Box with the real Dict stashed on `.original_space`
         # (old-stack default preprocessor). Handle both.
         self.orig_space = getattr(obs_space, "original_space", obs_space)
-        print("ORIG SPACE KEYS:", list(self.orig_space.spaces.keys()))
+        # print("ORIG SPACE KEYS:", list(self.orig_space.spaces.keys()))
 
 
         self.n_players, self.n_player_cols = self.orig_space["player_market"].shape
         self.players_per_team = self.orig_space["my_team"].shape[0]
+        self.history_window = self.orig_space["win_pct_history"].shape[0]
+        self.cap_horizon = self.orig_space["cap_projection"].shape[0]
 
         player_embed_dim = 32
         conv_hidden = model_config.get("custom_model_config", {}).get("conv_hidden", 64)
@@ -70,31 +72,39 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
         # Conv1d over the player axis lets each player's embedding see its
         # rank-neighbors (players just above/below it in rating).
         self.player_conv = nn.Sequential(
-            nn.Conv1d(self.n_player_cols, conv_hidden, kernel_size=1),
+            nn.Conv1d(self.n_player_cols, conv_hidden, kernel_size=3, padding = 1),
             nn.LeakyReLU(),
-            nn.Conv1d(conv_hidden, player_embed_dim, kernel_size=1),
+            nn.Conv1d(conv_hidden, player_embed_dim, kernel_size=3, padding = 1),
             nn.LeakyReLU(),
         )
         player_feat_dim = player_embed_dim * self.n_players  # flatten preserves order
 
-        self.team_mlp = nn.Sequential(
-            nn.Linear(self.players_per_team, 64),
+        self.market_encoder = nn.Sequential(
+            nn.Linear(self.n_players * player_embed_dim, 256),
             nn.LeakyReLU(),
         )
 
-        scalar_dim = 6  # win_pct, team_salary, standing, has_history
+        scalar_dim = 5  # my_team_rating, win_pct, team_salary, standing, has_history
+        history_input_dim = self.history_window * 3 # 3 because we have 3 arrays of size history window
+        team_raw_dim = self.players_per_team + scalar_dim + history_input_dim + self.cap_horizon
+        self.team_norm = nn.LayerNorm(team_raw_dim)
+        self.team_encoder = nn.Sequential(
+            nn.Linear(team_raw_dim, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 128),
+            nn.LeakyReLU(),
+        )
 
-        combined_dim = player_feat_dim + 64 + scalar_dim
-
+        combined_dim = 256 + 128 + 32
         self.trunk = nn.Sequential(
-            nn.Linear(combined_dim, 512),
+            nn.Linear(combined_dim, 256),
             nn.LeakyReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(256, 128),
             nn.LeakyReLU(),
         )
 
-        self.logits_layer = nn.Linear(256, num_outputs)
-        self.value_layer = nn.Linear(256, 1)
+        self.logits_layer = nn.Linear(128, num_outputs)
+        self.value_layer = nn.Linear(128, 1)
 
         self._value_out = None
 
@@ -111,21 +121,32 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
         my_team = obs["my_team"].float()                # (B, players_per_team)
         my_team_rating = obs["my_team_rating"].float()
         win_pct = obs["win_pct"].float()
-        season = obs["season"].float()
         team_salary = obs["team_salary"].float()
         standing = obs["standing"].float()
         has_history = obs["has_history"].float()
+        history_mask = obs["history_mask"].float()
+        win_pct_history = obs["win_pct_history"].float() * history_mask# (B, history_window)
+        rating_history = obs["rating_history"].float() * history_mask # (B, history_window)
+        cap_projection = obs["cap_projection"].float()
+        
 
         # Conv1d wants channel-first: (B, C=n_cols, L=n_players)
         x = player_market.permute(0, 2, 1)
         x = self.player_conv(x)                          # (B, embed_dim, n_players)
-        x = x.reshape(x.shape[0], -1)                     # flatten, order preserved
+        market_summary = torch.mean(x, dim = 2)
+        x_flat = x.reshape(x.shape[0], -1)                     # flatten, order preserved
+        market_feat = self.market_encoder(x_flat)
 
-        team_feat = self.team_mlp(my_team)
+        history_vars = torch.cat([win_pct_history, rating_history, history_mask], dim=-1)
+        scalars = torch.cat([my_team_rating, win_pct, team_salary, standing, has_history], dim=-1)
+        
+        # Concatenate all team context raw features together
+        raw_team_context = torch.cat([my_team, scalars, history_vars, cap_projection], dim=-1)
+        normed_team_context = self.team_norm(raw_team_context)
+        team_feat = self.team_encoder(normed_team_context)
 
-        scalars = torch.cat([my_team_rating, win_pct, season, team_salary, standing, has_history], dim=-1)
-
-        combined = torch.cat([x, team_feat, scalars], dim=-1)
+        # Combined Decision Trunk
+        combined = torch.cat([market_feat, market_summary, team_feat], dim=-1)
         trunk_out = self.trunk(combined)
 
         logits = self.logits_layer(trunk_out)
@@ -147,65 +168,65 @@ class FreeAgencyMaskedModel(TorchModelV2, nn.Module):
 
 ModelCatalog.register_custom_model("free_agency_masked_model", FreeAgencyMaskedModel)
 
-
-def evaluate_and_log_policy(algo, iteration, csv_path="evaluation_win_pct.csv", n_seasons=10):
+def evaluate_and_log_policy(algo, iteration, csv_path="evaluation_win_pct.csv", n_seasons=10, n_trajectories=5):
     """
-    Runs a standalone evaluation rollout, extracts team win percentages,
-    computes league competitive parity, and appends the records to a CSV.
+    Runs multiple standalone evaluation rollouts (trajectories), extracts team
+    win percentages, computes league competitive parity, and appends the
+    records to a CSV.
     """
     from free_agency.constants import LeagueConfig  # Adjust path to match your layout
-    
-    # 1. Initialize evaluation environment
-    eval_config = LeagueConfig()
-    eval_config.n_seasons = n_seasons
-    eval_env = FreeAgencyEnv(config=eval_config)
-    eval_env.reset()
-    
-    # Trackers
-    last_season = 0
-    records = []
-    
-    # 2. Sequential environment rollout loop
-    for agent in eval_env.agent_iter():
-        obs, reward, termination, truncation, info = eval_env.last()
-        
-        if termination or truncation:
-            action = None
-        else:
-            action = algo.compute_single_action(
-                obs, 
-                policy_id="shared_policy", 
-                explore=False # Deterministic behavior for objective tracking
-            )
-            
-        eval_env.step(action)
-        
-        # 3. Intercept seasonal boundaries
-        if eval_env.num_moves == 0 and eval_env.season > last_season:
-            completed_season = last_season
-            
-            # Extract win percentages
-            season_win_p_dict = {
-                team: float(eval_env.league.team_win_pct[team])
-                for team in eval_env.possible_agents
-            }
-            
-            # Structural row compilation
-            row = {
-                "iteration": iteration,
-                "evaluation_season": completed_season,
-                "league_std_dev": np.std(list(season_win_p_dict.values()))
-            }
-            # Append every individual team metric inline
-            for team_id, win_pct in season_win_p_dict.items():
-                row[team_id] = win_pct
-                
-            records.append(row)
-            last_season = eval_env.season
-            
-    # 4. Persistence layer using Pandas
+
+    records = []  # accumulate across ALL trajectories
+
+    for traj in range(n_trajectories):
+        # 1. Initialize evaluation environment
+        eval_config = LeagueConfig()
+        eval_config.n_seasons = n_seasons
+        eval_env = FreeAgencyEnv(config=eval_config)
+        eval_env.reset()
+
+        # Per-trajectory tracker
+        last_season = 0
+
+        # 2. Sequential environment rollout loop
+        for agent in eval_env.agent_iter():
+            obs, reward, termination, truncation, info = eval_env.last()
+
+            if termination or truncation:
+                action = None
+            else:
+                action = algo.compute_single_action(
+                    obs,
+                    policy_id="shared_policy",
+                    explore=False  # Deterministic behavior for objective tracking
+                )
+
+            eval_env.step(action)
+
+            # 3. Intercept seasonal boundaries
+            if eval_env.num_moves == 0 and eval_env.season > last_season:
+                completed_season = last_season
+
+                season_win_p_dict = {
+                    team: float(eval_env.league.team_win_pct[team])
+                    for team in eval_env.possible_agents
+                }
+
+                row = {
+                    "trajectory": traj,
+                    "iteration": iteration,
+                    "evaluation_season": completed_season,
+                    "league_std_dev": np.std(list(season_win_p_dict.values()))
+                }
+                for team_id, win_pct in season_win_p_dict.items():
+                    row[team_id] = win_pct
+
+                records.append(row)
+                last_season = eval_env.season
+
+    # 4. Persistence layer using Pandas — happens once, after all trajectories
     df_new = pd.DataFrame(records)
-    
+
     if not os.path.exists(csv_path):
         df_new.to_csv(csv_path, index=False)
         print(f" Created new tracking log file: {csv_path}")
@@ -282,10 +303,11 @@ if __name__ == "__main__":
             "agent_steps": result.get("num_agent_steps_sampled"),
         })
 
-        print(f"Running 10-season evaluation episode...")
-        eval_metrics = evaluate_and_log_policy(algo, n_seasons=10, csv_path = log_file, iteration = i)
+        if i % 10 == 0:
+            print(f"Running 10-season evaluation episode...")
+            eval_metrics = evaluate_and_log_policy(algo, n_seasons=10, csv_path = log_file, iteration = i)
 
-        if i % 50 == 0:
+        if i % 100 == 0:
             periodic_path = algo.save(checkpoint_dir="./rllib_checkpoints/periodic")
             print(f"Periodic checkpoint saved at: {periodic_path}")
         

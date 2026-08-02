@@ -65,14 +65,15 @@
 - $checkmark$ Player evolution (easier)
 - $checkmark$ Player retirement
 - $checkmark$ New players entering the league
-- Add lagged observations of team strength and team win percentage
+- $checkmark$ Add lagged observations of team strength and team win percentage
 - Add one extra simulation round
 - Create heuristic policy
 - Create league of opponents
 - $checkmark$ Make players care about salary $dot$ years, not just salary
-- Add future cap hits into list of observables: salaries that we already know will be in the next few season's cap.
+- $checkmark$ Add future cap hits into list of observables: salaries that we already know will be in the next few season's cap.
 - Make decay plot for real NBA
 - Use reward function to look at a decay plot x average reward during episode sort of plot.
+- To think about: instead of using mean player embeddings, use some sort of team-conditioned attention that, given a team's current position in the market, highlights the most important players.
 
 
 = To-Do (long-term)
@@ -94,6 +95,42 @@
 
 #pagebreak()
 = Chronological Order
+
+== August 1, 2026
+The 20-hour job I sent last time is done. It was quite a while and I think I may have abused the GPU slightly, but some useful things came from that. First is that I started to see more traces of bi-modality in my win percentage distributions (shown below)
+
+#figure(
+  image("figs/traj_worst_teams_aug1.png", width : 75%)
+)
+
+Admittedly, this is on less data than I had before, as I reduced the frequency of logs. This brings me to the main difficulty right now, which is speed. Simply speaking, training is incredibly slow. In 20 hours I only performed around 2000 updates to the network. Ideally I would be able to run through it much quicker. To rectify this I now did two things:
+- First, I moved the environment from a sequential framework (`AECEnv`) to a `ParallelEnv` style, which managed to speed things up quite significantly. Second, I created more "slack" in the player market. Before, I created just as many players as were needed by teams ($"player per team" dot "teams"$), but now I add 30% on top of that. This gives teams more options in terms of who to sign. In small tests I ran locally (no neural network, just randomly picking allowed actions), there was a meaningful speed improvement from this --- even when using the sequential environment. That is because before, once the pool of available players got small, teams were forced either to pick some bad players or hit the "pass" action. Now they can credibly pick decent/mediocre players at the end of rounds, instead of outright awful ones.
+
+But the speed issue may not be solved still. There is still the Neural Network to content with, so I might have to look at strategies to speed that up (or make it smaller).
+
+And now there is also another point. I don't know whether my current setup can replicate what NBA teams do. Past the first signing round, where the entire roster must be recruited, subsequent offseasons are quite tame. There are only 2 or 3 rounds in each of them. For more realism, I will probably have to add player rest (thus allowing teams to operate within the season) and trading of picks and players. Trading will be complicated, so I might start with affecting rotations.
+
+Before I plunge into this type of work though, I want to see what I can still get out of this environment. I'll run some speed tests to look at how the new `ParallelEnv` performs and then train it in earnest to see how far I can get. 
+
+Also, something else to think about: from the last few density plots by season I made, I notice that the first few seasons seem different from the ones towards the end. The density mostly concentrates on teams being below .500, probably because they want to set themselves up with young talent in the future. One way to solve this (which would also shave off some time in the beginning of the simulation) is to start out not with a completely blank slate, but with maybe 3 or 4 players already randomly allocated to each team. This would induce a form of path dependence, where teams would have to adjust based on the roster they are given, instead of starting from a complete blank slate. I like the idea but first I want to keep going with what I have.
+
+== July 30, 2026
+As I write this, I have just finished sending a job to run in the cluster. I made a few changes to the network architecture and agent observables. First, I removed the season tracking. It probably induced some strategic behaviour, where teams tanked in the beginning and later on tried to go full strength. I don't have solid evidence of this apart from the density plots I shared last time, but I find it logical to expect such a thing.
+
+Now for the bigger stuff. Replacing the season tracking are a few lagged variables, which were added to allow the agent to get a sense of history. I now share the winning percentage and team strength of the past 3 seasons. I chose 3 because I expect that to be around the length of a team's phase cycle; Looking at 4 or 5 seasons ago doesn't seem very informative. And extending the number of lags would become a de-facto season tracking again.
+
+Then I also added a _future_ observation --- the projected cap hit, which is attained by looking at the players signed by the agent for the next few seasons. This allows it to really understand what offering a 3 vs 5 year contract looks like. Since 5 years is the maximum contract length, I make the projection window also 5 years.
+
+And finally, I changed the network substantially. I will summarise the current architecture in bullet points:
+- Convolutional layer for player embeddings (kernel size = 3 is back, with a padding of 1)
+- The player market matrix first gets passed through the convolutional layer, then a "market features" layer that compresses all of this information. It is so that the player embeddings don't take up all of the observation space
+- In between the two steps above I compute the *mean embedding* for each of the 32 player embedding dimensions. The mean is supposed to represent more or less the market state. This gets appended to the final trunk module in order to make market decisions.
+  - This gets me close already to a Deep Sets sort of framework. For now I haven't fully transitioned, but the option remains open.
+- Now instead of having separate modules for the team vector, scalars, and history, I conslidate them all into one beautiful vector.
+- Oh, and LayerNorm is also applied in a lot of places!
+
+
+I am thinking about whether I should use transformers instead of (or in addition to) the mean player embedding. I could create a sort of team-conditioned attention layer, where, depending on the state of the team, certain player types are highlighted. That would be cool. 
 
 == July 28, 2026
 

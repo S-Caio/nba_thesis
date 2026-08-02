@@ -14,10 +14,10 @@ from pettingzoo import AECEnv
 from pettingzoo.utils import AgentSelector
 from gymnasium.utils import seeding
 
-from .constants import LeagueConfig, N_PLAYER_COLS
-from .state import LeagueState, new_league_state
+from .constants import LeagueConfig, N_PLAYER_COLS, HISTORY_WINDOW, CAP_HORIZON
+from .state import LeagueState, new_league_state, record_season_history, agent_to_team_id
 # from .contracts import handle_signing, contract_update, make_action_mask
-from .contracts import submit_offer, resolve_offers, contract_update, make_action_mask
+from .contracts import submit_offer, resolve_offers, contract_update, make_action_mask, compute_cap_projection
 from .rosters import rebuild_rosters, print_team_rosters
 from .player_lifecycle import player_update, run_rookie_draft
 from .season_sim import generate_exact_nba_schedule
@@ -60,6 +60,10 @@ class FreeAgencyEnv(AECEnv):
                 "team_salary" : Box(low = 0, high = self.config.salary_cap, shape = (1,), dtype = np.float32),
                 "standing" : Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "has_history": Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                "win_pct_history": Box(low=0, high=1, shape=(HISTORY_WINDOW,), dtype=np.float32),
+                "rating_history": Box(low=0, high=np.inf, shape=(HISTORY_WINDOW,), dtype=np.float32),
+                "history_mask": Box(low=0, high=1, shape=(HISTORY_WINDOW,), dtype=np.int8),
+                "cap_projection" : Box(low = 0, high = 1, shape = (CAP_HORIZON, ), dtype = np.float32),
             }) for agent in self.possible_agents
         }
 
@@ -78,15 +82,19 @@ class FreeAgencyEnv(AECEnv):
 
     def observe(self, agent):
         return {
-            "action_mask" : make_action_mask(self.league, self.config, agent),
+            "action_mask": make_action_mask(self.league, self.config, agent),
             "player_market": self.league.players.astype(np.float32),
             "my_team": self.league.teams[agent].astype(np.float32),
-            "my_team_rating" : np.array([np.sum(self.league.teams[agent])], dtype = np.float32),
+            "my_team_rating": np.array([np.sum(self.league.teams[agent])], dtype=np.float32),
             "win_pct": np.array([self.league.team_win_pct[agent]], dtype=np.float32),
-            "season" : np.array([self.season / self.config.n_seasons], dtype = np.float32),
-            "team_salary" : np.array([self.league.team_salaries[agent] / self.config.salary_cap], dtype=np.float32),
-            "standing" : np.array([self.team_standing[agent] / self.config.n_teams], dtype=np.float32),
+            # "season": np.array([self.season / self.config.n_seasons], dtype=np.float32),
+            "team_salary": np.array([self.league.team_salaries[agent] / self.config.salary_cap], dtype=np.float32),
+            "standing": np.array([self.team_standing[agent] / self.config.n_teams], dtype=np.float32),
             "has_history": np.array([self.league.team_has_history[agent]], dtype=np.float32),
+            "win_pct_history": self.league.team_win_pct_history[agent],
+            "rating_history": self.league.team_rating_history[agent],
+            "history_mask": self._history_mask,
+            "cap_projection" : (compute_cap_projection(self.league, agent, CAP_HORIZON) / self.config.salary_cap).astype(np.float32)
         }
 
     def close(self):
@@ -110,6 +118,7 @@ class FreeAgencyEnv(AECEnv):
 
         self.num_moves = 0
         self.season = 0
+        self._history_mask = self._compute_history_mask()
         self.full_draft_order = self.possible_agents[:]
 
         self._agent_selector = AgentSelector(self.agents)
@@ -159,32 +168,38 @@ class FreeAgencyEnv(AECEnv):
         #     print(f"{real_name:<25}: {self._cumulative_rewards[agent]:.4f}")
 
     def _run_season_boundary(self) -> None:
-        """Everything that happens once a season's draft is complete:
-        simulate the season, age/retire/replace players, run the next
-        rookie draft, and either advance or terminate."""
-        self._clear_rewards() 
-
-        # print(f"\nSimulating Season {self.season}!")
-        # print_team_rosters(self.league, self.config, self.agent_name_mapping)
+        self._clear_rewards()
 
         self.full_draft_order, self.team_standings = simulate_and_reward_season(
             self.league, self.config, self.g_list, self.agent_name_mapping, self.rewards
         )
 
+        for agent in self.possible_agents:                      
+            record_season_history(
+                self.league, agent,                               
+                self.league.team_win_pct[agent],                  
+                float(np.sum(self.league.teams[agent])),          
+            )                                                      
+
         player_update(self.league)
         contract_update(self.league)
-        # Rebuild twice: once so the rookie draft's roster/cap checks see
-        # accurate occupancy, once more to fold newly drafted rookies in.
         rebuild_rosters(self.league, self.config)
         run_rookie_draft(self.league, self.config, self.full_draft_order,
-                          n_to_retire=self.config.n_new_entrants_per_season)
+                        n_to_retire=self.config.n_new_entrants_per_season)
         rebuild_rosters(self.league, self.config)
 
         self.season += 1
+        self._history_mask = self._compute_history_mask()
         self.num_moves = 0
 
         if self.season == self.config.n_seasons:
             for agent in self.possible_agents:
                 self.terminations[agent] = True
-        # else:
-        #     self._clear_rewards()
+
+
+    def _compute_history_mask(self):
+        filled = min(self.season, self.config.history_window)
+        mask = np.zeros(self.config.history_window, dtype=np.int8)
+        if filled > 0:
+            mask[-filled:] = 1
+        return mask

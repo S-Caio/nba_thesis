@@ -71,7 +71,7 @@ def inspect_trained_policy(checkpoint_path):
     )
     
     # Construct the bare model shell and restore the trained weights into it
-    algo = config_obj.build()
+    algo = config_obj.algo_build()
     algo.restore(checkpoint_path)
     
     # 3. Spin up an evaluation environment instance

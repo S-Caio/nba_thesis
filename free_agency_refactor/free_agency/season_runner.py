@@ -143,3 +143,28 @@ def simulate_and_reward_season(state: LeagueState, config: LeagueConfig,
 
     # print_standings(standings, agent_name_mapping)
     return apply_standings(standings, rewards), standings_dict
+
+
+def apply_standings_parallel(standings: list[StandingEntry], rewards: dict[str, float]) -> list[str]:
+    """Mutates `rewards` in place (matching env's self.rewards contract)
+    and returns the full_draft_order derived from the standings."""
+    full_draft_order = [None] * len(standings)
+    for entry in standings:
+        rewards[entry.agent_name] = entry.reward
+        full_draft_order[entry.draft_position - 1] = entry.agent_name
+    return full_draft_order, rewards
+
+
+def simulate_and_reward_season_parallel(state: LeagueState, config: LeagueConfig,
+                                game_list, agent_name_mapping: dict[str, str],
+                                rewards: dict[str, float]) -> tuple[tuple[str], dict[str, int]]:
+    """Same public signature as before -- env.py doesn't need to change."""
+    wins, games_played = run_game_simulation(state, config, game_list)
+    update_win_records(state, wins, games_played)
+
+    _, order_dict = draft_lottery()
+    standings, standings_dict = build_standings(wins, order_dict)
+    full_draft_order, rewards = apply_standings_parallel(standings, rewards)
+
+    # print_standings(standings, agent_name_mapping)
+    return full_draft_order, rewards, standings_dict

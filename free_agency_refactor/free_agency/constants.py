@@ -21,6 +21,8 @@ OFFERS = 5
 
 
 N_PLAYER_COLS = 6
+HISTORY_WINDOW = 3
+CAP_HORIZON = 5
 
 
 @dataclass
@@ -29,6 +31,8 @@ class LeagueConfig:
     players_per_team: int = 10
     salary_cap: float = 100.0
     n_seasons: int = 10
+
+    history_window = HISTORY_WINDOW
 
     # Signing action space
     salary_ranges: np.ndarray = field(default_factory=lambda: np.array([1, 5, 10, 15, 20, 25, 30]))
@@ -56,7 +60,7 @@ class LeagueConfig:
 
     @property
     def n_players(self) -> int:
-        return self.n_teams * self.players_per_team
+        return round((self.n_teams * self.players_per_team) * 1.3)
 
     @property
     def n_proper_actions(self) -> int:

@@ -16,19 +16,19 @@ win_pct["iter_group"] = win_pct["iteration"] // 100
 #%%
 # Alternative reading script (in case file was appended instead of overwritten)
 
-win_pct = pd.read_csv("free_agency_env_win_pct.csv")
+# win_pct = pd.read_csv("free_agency_env_win_pct.csv")
 
-start_of_obs = win_pct[win_pct["iteration"] == win_pct["iteration"].max()].index.stop # Assuming old run went on for longer than current run.
-win_pct = win_pct.iloc[start_of_obs:, :]
-win_pct = win_pct.reset_index(drop = True)
-win_pct = win_pct.melt(
-    id_vars=["iteration", "evaluation_season"]
-    )
+# start_of_obs = win_pct[win_pct["iteration"] == win_pct["iteration"].max()].index.stop # Assuming old run went on for longer than current run.
+# win_pct = win_pct.iloc[start_of_obs:, :]
+# win_pct = win_pct.reset_index(drop = True)
+# win_pct = win_pct.melt(
+#     id_vars=["iteration", "evaluation_season"]
+#     )
 
-win_pct = win_pct[win_pct["variable"] != "league_std_dev"]
+# win_pct = win_pct[win_pct["variable"] != "league_std_dev"]
 
-win_pct["iter_group"] = win_pct["iteration"] // 100
-win_pct
+# win_pct["iter_group"] = win_pct["iteration"] // 100
+# win_pct
 #%%
 p = (
     ggplot(win_pct, aes(x = "value")) +
@@ -42,7 +42,7 @@ p
 #%%
 
 
-win_pct_last = win_pct[win_pct["iter_group"] == win_pct["iter_group"].max()]
+win_pct_last = win_pct[(win_pct["iter_group"] == win_pct["iter_group"].max())]
 
 p_last_group = (
     ggplot(win_pct_last, aes(x = "value")) +
@@ -78,6 +78,40 @@ time_plot = (
 )
 time_plot
 # plot_df
+
+#%%
+def mark_worst_k_teams_season0(df, k=4):
+    df = df.sort_values(["iteration", "evaluation_season"]).copy()
+
+    def mark_group(g):
+        season0 = g[g["evaluation_season"] == 0]
+        worst_teams = season0.nsmallest(k, "value")["variable"].tolist()
+
+        g["worst_teams"] = [worst_teams] * len(g)
+        g["worst_team_flag"] = g["variable"].isin(worst_teams)
+        # rank: 1 = worst, 2 = second worst, etc. (NaN if not in top-k)
+        rank_map = {team: i + 1 for i, team in enumerate(worst_teams)}
+        g["worst_rank"] = g["variable"].map(rank_map)
+        return g
+
+    return df.groupby("iteration", group_keys=True).apply(mark_group)
+
+worst_k_df = mark_worst_k_teams_season0(win_pct, k=4)
+plot_df = worst_k_df[
+    (worst_k_df["worst_team_flag"] == True) &
+    (worst_k_df["iter_group"] == worst_k_df["iter_group"].max())
+]
+plot_df.reset_index(inplace=True)
+plot_df["line_id"] = plot_df["iteration"].astype(str) + "_" + plot_df["variable"].astype(str)
+
+time_plot = (
+    ggplot(plot_df, aes(x="evaluation_season", y="value"))
+    + geom_line(aes(group="line_id"), color="steelblue", alpha=0.1, size=0.5)
+    + geom_smooth(aes(group="worst_rank", color="factor(worst_rank)"), method="loess", size=1.2, se=True)
+    + labs(title="Trajectory of top-4 worst teams in last 50 updates", color="Worst rank", y = "Win %")
+)
+time_plot
+
 
 #%%
 # Rank teams within each iteration-season pair by value
@@ -138,6 +172,7 @@ avg_rank_by_initial = (
 )
 avg_rank_by_initial["se"] = avg_rank_by_initial["std_rank"] / np.sqrt(avg_rank_by_initial["n"])
 
+
 #%%
 p = (
     ggplot(avg_rank_by_initial, aes(x="initial_rank", y="mean_rank")) +
@@ -153,6 +188,33 @@ p = (
     labs(
         x="Rank in season 0",
         y="Average rank in subsequent seasons"
+    )
+)
+p
+
+#%%
+season2 = other_seasons[other_seasons["evaluation_season"] == 1]
+avg_season2_rank = (
+    season2.groupby("initial_rank")["rank"]
+    .agg(mean_rank="mean", std_rank="std", n="count")
+    .reset_index()
+)
+avg_season2_rank["se"] = avg_season2_rank["std_rank"] / np.sqrt(avg_season2_rank["n"])
+
+p = (
+    ggplot(avg_season2_rank, aes(x="initial_rank", y="mean_rank")) +
+    geom_ribbon(
+        aes(ymin="mean_rank - se", ymax="mean_rank + se"),
+        alpha=0.2
+    ) +
+    geom_line() +
+    geom_point() +
+    geom_abline(slope=1, intercept=0, linetype="dashed", color="grey") +
+    xlim(0, 30) +
+    ylim(0, 30) +
+    labs(
+        x="Rank in season 0",
+        y="Average rank in second season"
     )
 )
 p
@@ -289,7 +351,7 @@ plot_df
 # %%
 # Unique facet combinations
 facets = (
-    win_pct[["iteration", "evaluation_season"]]
+    win_pct_last[["iteration", "evaluation_season"]]
     .drop_duplicates()
 )
 
@@ -303,7 +365,7 @@ nba_facet = (
 )
 nba_facet["dataset"] = "NBA"
 
-sim = win_pct.copy()
+sim = win_pct_last.copy()
 sim["dataset"] = "Simulation"
 
 plot_df = pd.concat([sim, nba_facet], ignore_index=True)
@@ -317,7 +379,7 @@ p = (
     + facet_wrap("~iteration")
 )
 
-# display(p)
+display(p)
 #%%
 from scipy.stats import wasserstein_distance
 

@@ -10,7 +10,7 @@ No PettingZoo env required.
 import numpy as np
 
 from .constants import LeagueConfig, RATING, TEAM, CONTRACT_LEN, SALARY, OFFERS
-from .state import LeagueState
+from .state import LeagueState, agent_to_team_id
 
 
 # Constants for action decoding
@@ -166,10 +166,12 @@ def resolve_offers(state: LeagueState, config: LeagueConfig, rng: np.random.Gene
     player_ids = state.offer_player[team_idxs]
     salaries = config.salary_ranges[state.offer_salary_idx[team_idxs]]
     lengths = config.contract_lengths[state.offer_length_idx[team_idxs]]
+    guaranteed_value = salaries * lengths
+
 
     # Sort by salary desc; random float as tiebreak. Cheap: len == n_teams.
     tiebreak = rng.random(len(team_idxs))
-    order = np.lexsort((tiebreak, -salaries))
+    order = np.lexsort((tiebreak, -guaranteed_value))
 
     signed_players = set()
     for i in order:
@@ -210,3 +212,20 @@ def contract_update(state: LeagueState) -> None:
     expired_mask = (state.players[:, CONTRACT_LEN] == 0) & (state.players[:, TEAM] != 0)
     state.players[expired_mask, TEAM] = 0.0
     state.players[expired_mask, SALARY] = 0.0
+
+
+def compute_cap_projection(league: LeagueState, agent: str, horizon: int) -> np.ndarray:
+    """Committed cap hit for a team's currently-signed roster, `horizon` seasons
+    ahead. Deterministic given current contracts — does NOT include future
+    free-agent signings, so this is a floor on next season's spend, not a
+    total. Recompute every step; signings change TEAM/SALARY mid-round."""
+    team_idx = agent_to_team_id(agent)
+    is_mine = league.players[:, TEAM] == team_idx
+    contract_len = league.players[:, CONTRACT_LEN]
+    salary = league.players[:, SALARY]
+
+    projection = np.zeros(horizon, dtype=np.float32)
+    for h in range(1, horizon + 1):
+        still_under_contract = is_mine & (contract_len > h)
+        projection[h - 1] = salary[still_under_contract].sum()
+    return projection
