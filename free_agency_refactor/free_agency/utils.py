@@ -10,4 +10,4 @@ def evolve_func(rating, age):
     return rating
 
 def reward_func(position, k = 0.3):
-    return np.exp(-k * (position- 1))
+    return 5 * np.exp(-k * (position- 1))

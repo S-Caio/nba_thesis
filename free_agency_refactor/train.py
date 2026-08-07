@@ -268,6 +268,11 @@ if __name__ == "__main__":
         .environment("free_agency_v1")
         .framework("torch")
         .resources(num_gpus=1)
+        .env_runners(
+        num_env_runners=2,       # Uses 2 CPU cores for parallel environment simulation
+        num_cpus_per_env_runner=1, # 1 CPU core per worker
+        sample_timeout_s=300.0,  # Prevents timeouts during heavy season simulations
+        )
         .multi_agent(
             policies={"shared_policy": (None, obs_space, act_space, {})},
             policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
@@ -288,6 +293,7 @@ if __name__ == "__main__":
 
     for i in range(ITER):
         print(f"Training in iteration {i}")
+        start_time_iter = time.time()
         result = algo.train()
         
         # Extract metrics safely from the nested env_runners dictionary
@@ -310,6 +316,9 @@ if __name__ == "__main__":
         if i % 100 == 0:
             periodic_path = algo.save(checkpoint_dir="./rllib_checkpoints/periodic")
             print(f"Periodic checkpoint saved at: {periodic_path}")
+
+        end_time_iter = time.time()
+        print(f"Time for iteration: {start_time_iter - end_time_iter}")
         
     final_path = algo.save(checkpoint_dir="./rllib_checkpoints/final")
     print(f"\n Training complete! Final model saved to: {final_path}")

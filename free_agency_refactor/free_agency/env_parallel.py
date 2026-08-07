@@ -14,10 +14,10 @@ from pettingzoo import ParallelEnv
 from gymnasium.utils import seeding
 import pprint
 
-from .constants import LeagueConfig, N_PLAYER_COLS, HISTORY_WINDOW, CAP_HORIZON
-from .state import LeagueState, new_league_state, record_season_history, agent_to_team_id
+from .constants import LeagueConfig, N_PLAYER_COLS, HISTORY_WINDOW, CAP_HORIZON, TEAM, AGE
+from .state import LeagueState, new_league_state, record_season_history, agent_to_team_id, initial_endowment
 # from .contracts import handle_signing, contract_update, make_action_mask
-from .contracts import submit_offer, resolve_offers, contract_update, make_action_mask, compute_cap_projection
+from .contracts import submit_offer, resolve_offers, contract_update, make_action_mask, compute_cap_projection, make_free_agent_market_and_mapping, FREE_AGENT_MARKER
 from .rosters import rebuild_rosters, print_team_rosters
 from .player_lifecycle import player_update, run_rookie_draft
 from .season_sim import generate_exact_nba_schedule
@@ -32,49 +32,40 @@ class FreeAgencyEnv(ParallelEnv):
     def __init__(self, render_mode=None, config: LeagueConfig | None = None):
         self.config = config or LeagueConfig()
         self.possible_agents = [f"team_{i}" for i in range(self.config.n_teams)]
+        self.agents = [f"team_{i}" for i in range(self.config.n_teams)]
         self.agent_name_mapping = dict(zip(self.possible_agents, nba_teams))
         self.render_mode = render_mode
 
         self.league = new_league_state(self.config, self.possible_agents)
+        initial_endowment(self.league, self.config)
+        rebuild_rosters(self.league, self.config)
+        self.ages = self.calculate_ages()
+        self.n_players_z = self.players_relative_z_score()
+        self.rel_strength = self.strength_relative_z_score()
+        self.free_agents, self.free_agent_mapping = make_free_agent_market_and_mapping(self.league, self.config)
         self.g_list = generate_exact_nba_schedule(self.config.n_teams)
         self.season = 0
         self.team_standing = {agent : self.config.n_teams // 2 for agent in self.possible_agents}
 
-        self.n_contract_actions = self.config.n_players * len(self.config.salary_ranges) * len(self.config.contract_lengths)
+        self.n_contract_actions = self.config.n_proper_actions
         self.n_actions = self.n_contract_actions + 1
 
-        # self._action_spaces = {
-        #     agent: Discrete(self.n_actions)
-        #     for agent in self.possible_agents
-        # }
-
-        # self._observation_spaces = {
-        #     agent: Dict({
-        #         "action_mask" : Box(low = 0, high = 1, shape = (self.n_actions, ), dtype = np.int8),
-        #         "player_market": Box(low=0, high=np.inf,
-        #                               shape=(self.config.n_players, N_PLAYER_COLS), dtype=np.float32),
-        #         "my_team": Box(low=0, high=np.inf, shape=(self.config.players_per_team,), dtype=np.float32),
-        #         "my_team_rating" : Box(low = 0, high = np.inf, shape = (1, ), dtype = np.float32),
-        #         "win_pct": Box(low=0, high=1, shape=(1,), dtype=np.float32),
-        #         "season" : Box(low = 0, high = 1, shape=(1,), dtype = np.float32),
-        #         "team_salary" : Box(low = 0, high = self.config.salary_cap, shape = (1,), dtype = np.float32),
-        #         "standing" : Box(low=0, high=1, shape=(1,), dtype=np.float32),
-        #         "has_history": Box(low=0, high=1, shape=(1,), dtype=np.float32),
-        #         "win_pct_history": Box(low=0, high=1, shape=(HISTORY_WINDOW,), dtype=np.float32),
-        #         "rating_history": Box(low=0, high=np.inf, shape=(HISTORY_WINDOW,), dtype=np.float32),
-        #         "history_mask": Box(low=0, high=1, shape=(HISTORY_WINDOW,), dtype=np.int8),
-        #         "cap_projection" : Box(low = 0, high = 1, shape = (CAP_HORIZON, ), dtype = np.float32),
-        #     }) for agent in self.possible_agents
-        # }
+        self.max_moves = 150
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
         return Dict({
                 "action_mask" : Box(low = 0, high = 1, shape = (self.n_actions, ), dtype = np.int8),
-                "player_market": Box(low=0, high=np.inf,
-                                      shape=(self.config.n_players, N_PLAYER_COLS), dtype=np.float32),
+                # "player_market": Box(low=0, high=np.inf,
+                #                       shape=(self.config.n_players, N_PLAYER_COLS), dtype=np.float32),
+                "free_agents" : Box(low=-1, high=np.inf,
+                                      shape=(self.config.n_free_agents, N_PLAYER_COLS), dtype=np.float32),
                 "my_team": Box(low=0, high=np.inf, shape=(self.config.players_per_team,), dtype=np.float32),
                 "my_team_rating" : Box(low = 0, high = np.inf, shape = (1, ), dtype = np.float32),
+                "relative_team_strength" : Box(low = -np.inf, high = np.inf, shape = (1, ), dtype = np.float32),
+                "my_team_avg_age" : Box(low = 18, high = 40, shape = (1,), dtype = np.float32),
+                "n_players_team" : Box(low = 0, high = 10, shape = (1,), dtype = np.int8),
+                "n_players_team_relative" : Box(low = -np.inf, high = np.inf, shape = (1,), dtype = np.float32),
                 "win_pct": Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "season" : Box(low = 0, high = 1, shape=(1,), dtype = np.float32),
                 "team_salary" : Box(low = 0, high = self.config.salary_cap, shape = (1,), dtype = np.float32),
@@ -98,10 +89,15 @@ class FreeAgencyEnv(ParallelEnv):
 
     def observe(self, agent):
         return {
-            "action_mask": make_action_mask(self.league, self.config, agent),
-            "player_market": self.league.players.astype(np.float32),
+            "action_mask": make_action_mask(self.league, self.config, agent, self.free_agents),
+            # "player_market": self.league.players.astype(np.float32),
+            "free_agents" : self.free_agents.astype(np.float32),
             "my_team": self.league.teams[agent].astype(np.float32),
             "my_team_rating": np.array([np.sum(self.league.teams[agent])], dtype=np.float32),
+            "relative_team_strength" : np.array([self.rel_strength[agent]], dtype=np.float32),
+            "my_team_avg_age" : np.array([self.ages[agent]]),
+            "n_players_team" : np.array([np.count_nonzero(self.league.teams[agent]).astype(np.int8)]),
+            "n_players_team_relative" : np.array([self.n_players_z[agent] / 10], dtype=np.float32),
             "win_pct": np.array([self.league.team_win_pct[agent]], dtype=np.float32),
             "team_salary": np.array([self.league.team_salaries[agent] / self.config.salary_cap], dtype=np.float32),
             "standing": np.array([self.team_standing[agent] / self.config.n_teams], dtype=np.float32),
@@ -116,6 +112,7 @@ class FreeAgencyEnv(ParallelEnv):
         pass
 
     def reset(self, seed=None, options=None):
+        # print("RESET")
         self.np_random, self.np_random_seed = seeding.np_random(seed)
 
 
@@ -129,6 +126,12 @@ class FreeAgencyEnv(ParallelEnv):
 
 
         self.league = new_league_state(self.config, self.agents)
+        initial_endowment(self.league, self.config)
+        rebuild_rosters(self.league, self.config)
+        self.free_agents, self.free_agent_mapping = make_free_agent_market_and_mapping(self.league, self.config)
+        self.ages = self.calculate_ages()
+        self.n_players_z = self.players_relative_z_score()
+        self.rel_strength = self.strength_relative_z_score()
         self.g_list = generate_exact_nba_schedule(self.config.n_teams)
 
         self.num_moves = 0
@@ -155,38 +158,59 @@ class FreeAgencyEnv(ParallelEnv):
         return True
 
     def step(self, actions):
-        # current_agent = self.agent_selection
-        if not actions:
-            self.agents = []
+        # if self.num_moves % 5 == 0:
+        #     print(f"step {self.num_moves}")
+        # If environment has no active agents, return empty dictionaries
+        if not self.agents:
             return {}, {}, {}, {}, {}
 
-        self.rewards = {agent : 0.0 for agent in self.agents}
+        # Lock in the list of agents participating in this step
+        current_agents = self.agents[:]
 
-        self.terminations = {agent: False for agent in self.agents}
+        self.rewards = {agent: 0.0 for agent in current_agents}
+        self.terminations = {agent: False for agent in current_agents}
+        self.truncations = {agent: False for agent in current_agents}
 
-        # if self.terminations[current_agent] or self.truncations[current_agent]:
-        #     self._was_dead_step(action)
-        #     return
-
+        # Submit actions for active agents
         for agent, action in actions.items():
-            submit_offer(self.league, self.config, agent, action)
+            if agent in current_agents:
+                submit_offer(self.league, self.config, agent, action, self.free_agent_mapping)
 
         self.num_moves += 1
         resolve_offers(self.league, self.config, self.np_random)
+        self.free_agents, self.free_agent_mapping = make_free_agent_market_and_mapping(self.league, self.config)
+        self.ages = self.calculate_ages()
+        self.n_players_z = self.players_relative_z_score()
+        self.rel_strength = self.strength_relative_z_score()
+
+
+        # Truncation safety: prevent infinite free-agency loops
+        stalled = self.num_moves >= self.max_moves and not self._league_ready()
 
         if self._league_ready():
-            self._run_season_boundary()
-            # print(f"Here are the rewards after move {self.num_moves}")
-            # pprint.pprint(self.rewards)
+            self._run_season_boundary()  # may overwrite self.terminations, keyed over possible_agents
 
-        observations = {agent : self.observe(agent) for agent in self.agents}
-        self.state = observations
 
-        infos = {agent: {} for agent in self.agents}
-        truncations = {agent: False for agent in self.agents}
-        
+        if stalled:
+            print("Stalled the simulation!")
+            for agent in current_agents:
+                self.truncations[agent] = True
 
-        return observations, self.rewards, self.terminations, truncations, infos
+        # 2. Build output dicts scoped to current_agents, no matter what internal
+        #    state looks like. This is the ONLY place PettingZoo-facing dicts get built.
+        observations = {agent: self.observe(agent) for agent in current_agents}
+        rewards      = {agent: self.rewards.get(agent, 0.0) for agent in current_agents}
+        terminations = {agent: self.terminations.get(agent, False) for agent in current_agents}
+        truncations  = {agent: self.truncations.get(agent, False) for agent in current_agents}
+        infos        = {agent: {} for agent in current_agents}
+
+        # 3. Update self.agents AFTER building output for step t
+        self.agents = [
+            agent for agent in current_agents
+            if not (terminations[agent] or truncations[agent])
+        ]
+
+        return observations, rewards, terminations, truncations, infos
         # if self._agent_selector.is_last():
         #     resolve_offers(self.league, self.config, self.np_random)
         #     if self._league_ready():
@@ -196,13 +220,58 @@ class FreeAgencyEnv(ParallelEnv):
 
         # self.agent_selection = self._agent_selector.next()
         # self._accumulate_rewards()
+
+
+    def calculate_ages(self):
+        ages_dict = {}
+        all_ages = self.league.players[self.league.players[:, TEAM] != FREE_AGENT_MARKER][:, AGE]
+        league_avg_age = np.mean(all_ages).astype(np.float32) if all_ages.size > 0 else np.float32(25.0)
+
+        for agent in self.agents:
+            team_ages = self.league.players[self.league.players[:, TEAM] == agent_to_team_id(agent)][:, AGE]
+            if team_ages.size > 0:
+                ages_dict[agent] = np.mean(team_ages).astype(np.float32)
+            else:
+                ages_dict[agent] = league_avg_age
+
+        return ages_dict
+
+    @staticmethod
+    def _relative_z(values_dict, eps=1e-8, use_std = True):
+        """
+        values_dict: {agent: scalar}
+        Returns {agent: z_score}, computed across all agents in values_dict.
+        """
+        agents = list(values_dict.keys())
+        values = np.array([values_dict[a] for a in agents], dtype=np.float32)
+
+        mean, std = values.mean(), values.std()
+        if use_std:
+            z = (values - mean) / (std + eps)
+        else:
+            z = values - mean
+
+        return {agent: np.float32(z_i) for agent, z_i in zip(agents, z)}
+
+    def players_relative_z_score(self):
+        n_players = {
+            agent: np.count_nonzero(roster)
+            for agent, roster in self.league.teams.items()
+        }
+        return self._relative_z(n_players, use_std=False)
+
+    def strength_relative_z_score(self):
+        strength = {
+            agent: np.sum(roster)
+            for agent, roster in self.league.teams.items()
+        }
+        return self._relative_z(strength)
         
-
-
     def _run_season_boundary(self) -> None:
+        # print("Season boundary")
         # self._clear_rewards()
 
-        self.full_draft_order, self.rewards, self.team_standings = simulate_and_reward_season_parallel(
+        self.full_draft_order, self.rewards, self.team_standing = simulate_and_reward_season_parallel(
             self.league, self.config, self.g_list, self.agent_name_mapping, self.rewards
         )
 
@@ -227,6 +296,10 @@ class FreeAgencyEnv(ParallelEnv):
         if self.season == self.config.n_seasons:
             for agent in self.possible_agents:
                 self.terminations[agent] = True
+        else:
+            for agent in self.possible_agents:
+                self.terminations[agent] = False
+
 
 
     def _compute_history_mask(self):

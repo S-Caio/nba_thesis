@@ -2,13 +2,14 @@
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
 #SBATCH --time=20:00:00
+#SBATCH --mem=32G
 #SBATCH --output=logs/train_%j.log       # Captures standard output (stdout)
 #SBATCH --error=logs/train_%j.err        # Captures ALL errors and warnings (stderr)
 #SBATCH --gres=gpu:1                     # Request 1 GPU for your training
 #SBATCH --cpus-per-task=4                # CPU cores for environment rollouts
 
 # --- CONFIGURATION ---
-TRAIN_SCRIPT="train.py" 
+TRAIN_SCRIPT="train_parallel.py" 
 LOG_DIR="./logs"
 # ---------------------
 

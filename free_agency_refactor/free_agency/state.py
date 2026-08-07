@@ -82,3 +82,73 @@ def agent_to_team_id(agent: str) -> int:
     """The value stored in players[:, TEAM] for this agent's roster.
     1-indexed; 0 (FREE_AGENT_MARKER) means unsigned."""
     return int(agent.split("_")[1]) + 1
+
+
+def pick_initial_players(config):
+    n_per_team = config.players_per_team // 2
+    n_to_pick = n_per_team * config.n_teams
+
+    idx = np.arange(1, config.n_players + 1)
+    alpha = 0.3
+    score = idx ** (-alpha)
+    p = score / score.sum()
+
+    players_to_assign = np.random.choice(range(config.n_players), size = n_to_pick, replace = False, p = p)
+
+    return sorted(players_to_assign), n_per_team
+
+
+def initial_endowment(state, config):
+    players_to_assign, n_per_team = pick_initial_players(config)
+    picked_players = state.players[players_to_assign]
+    n_picked_players = len(picked_players)
+
+    # How many players go to each team
+    while True:
+        repeated = np.repeat(np.arange(1, config.n_teams + 1), n_per_team)
+        counts = np.random.multinomial(n_picked_players, 
+                                np.ones(config.n_teams) / config.n_teams)
+
+        # print(counts)
+        if np.all(counts <= config.players_per_team): 
+            break
+
+    team_ids = np.repeat(np.arange(1, config.n_teams + 1), counts)
+    np.random.shuffle(team_ids)
+
+    # Assigning players to teams
+    state.players[players_to_assign, TEAM] = team_ids
+
+
+    # Assigning contract lengths to players (bias towards shorter contracts)
+    c_lengths = np.random.choice(config.contract_lengths,
+                    size = n_picked_players,
+                    replace = True,
+                    p = [0.325, 0.325, 0.3, 0.04, 0.01]
+    )
+    state.players[players_to_assign, CONTRACT_LEN] = c_lengths
+
+    # Assigning salaries to players (proportional to rating)
+    rating = picked_players[:, RATING]
+    min_rating = np.min(rating)
+    max_rating = np.max(rating)
+    rating_percentile = (rating - min_rating) / (max_rating - min_rating)
+    expected_salary = rating_percentile * (len(config.salary_ranges) - 1)
+
+
+    salary_idx = np.arange(len(config.salary_ranges))
+    sigma = 1
+    weights = np.exp(-0.5 * ((salary_idx[None, :] - expected_salary[:, None]) / sigma) ** 2)
+    weights /= weights.sum(axis=1, keepdims=True)
+
+    # print("weights")
+    # print(weights)
+
+    salaries = np.array([
+        np.random.choice(config.salary_ranges, p=w)
+        for w in weights
+    ])
+    state.players[players_to_assign, SALARY] = salaries
+
+
+

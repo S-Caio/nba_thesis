@@ -6,12 +6,13 @@ from plotnine import *
 win_pct = pd.read_csv("free_agency_env_win_pct.csv")
 # win_pct[win_pct["iteration"] == 1037]
 win_pct = win_pct.melt(
-    id_vars=["iteration", "evaluation_season"]
+    id_vars=["trajectory", "iteration", "evaluation_season"]
     )
 
 win_pct = win_pct[win_pct["variable"] != "league_std_dev"]
 
 win_pct["iter_group"] = win_pct["iteration"] // 100
+win_pct
 
 #%%
 # Alternative reading script (in case file was appended instead of overwritten)
@@ -55,7 +56,7 @@ p_last_group
 
 #%%
 def mark_worst_team_season0(df):
-    df = df.sort_values(["iteration", "evaluation_season"]).copy()
+    df = df.sort_values(["trajectory", "iteration", "evaluation_season"]).copy()
 
     def mark_group(g):
         season0 = g[g["evaluation_season"] == 0]
@@ -70,9 +71,15 @@ def mark_worst_team_season0(df):
 worst_team_df = mark_worst_team_season0(win_pct)
 plot_df = worst_team_df[(worst_team_df["worst_team_flag"] == True) & (worst_team_df["iter_group"] == worst_team_df["iter_group"].max())]
 plot_df.reset_index(inplace = True)
+
+plot_df["iter_traj"] = (
+    plot_df["iteration"].astype(str) + "_" +
+    plot_df["trajectory"].astype(str)
+)
+
 time_plot = (
     ggplot(plot_df, aes(x = "evaluation_season", y = "value")) +
-    geom_line(aes(group = "iteration"), color = "steelblue", alpha = 0.2, size = 0.6) +
+    geom_line(aes(group = "iter_traj"), color = "steelblue", alpha = 0.2, size = 0.6) +
     geom_smooth(method = "loess", color = "navy", size = 1.2, se = True) +
     labs(title = "Trajectory of worst team in last 50 updates")
 )
@@ -81,7 +88,7 @@ time_plot
 
 #%%
 def mark_worst_k_teams_season0(df, k=4):
-    df = df.sort_values(["iteration", "evaluation_season"]).copy()
+    df = df.sort_values(["trajectory", "iteration", "evaluation_season"]).copy()
 
     def mark_group(g):
         season0 = g[g["evaluation_season"] == 0]
@@ -102,7 +109,11 @@ plot_df = worst_k_df[
     (worst_k_df["iter_group"] == worst_k_df["iter_group"].max())
 ]
 plot_df.reset_index(inplace=True)
-plot_df["line_id"] = plot_df["iteration"].astype(str) + "_" + plot_df["variable"].astype(str)
+plot_df["iter_traj"] = (
+    plot_df["iteration"].astype(str) + "_" +
+    plot_df["trajectory"].astype(str)
+)
+plot_df["line_id"] = plot_df["iteration"].astype(str) + "_" + plot_df["variable"].astype(str) + plot_df["trajectory"].astype(str)
 
 time_plot = (
     ggplot(plot_df, aes(x="evaluation_season", y="value"))
@@ -117,7 +128,7 @@ time_plot
 # Rank teams within each iteration-season pair by value
 # ascending=True means rank 1 = worst (lowest win_pct); flip if you want rank 1 = best
 win_pct["rank"] = (
-    win_pct.groupby(["iteration", "evaluation_season"])["value"]
+    win_pct.groupby(["trajectory", "iteration", "evaluation_season"])["value"]
     .rank(method = "min", ascending = False)
 )
 
@@ -129,13 +140,17 @@ plot_df_rank = worst_team_df[
     (worst_team_df["iter_group"] == worst_team_df["iter_group"].max())
 ]
 plot_df_rank = plot_df_rank.reset_index()
+plot_df_rank["iter_traj"] = (
+    plot_df_rank["iteration"].astype(str) + "_" +
+    plot_df_rank["trajectory"].astype(str)
+)
 
 #%%
 
 # plot_df_rank
 rank_plot = (
     ggplot(plot_df_rank, aes(x = "evaluation_season", y = "rank")) +
-    geom_line(aes(group = "iteration"), alpha = 0.2, size = 1, color = "lightgreen") +
+    geom_line(aes(group = "iter_traj"), alpha = 0.1, size = 1, color = "green") +
     geom_smooth(method = "loess", color = "forestgreen", size = 1.2, se = True) +
     scale_y_reverse() +
     labs(title = "Trajectories (in terms of rank) for the last 50 iterations")
@@ -146,19 +161,19 @@ rank_plot
 # 1. Grab each team's rank at season 0, per iteration
 
 win_pct_last["rank"] = (
-    win_pct.groupby(["iteration", "evaluation_season"])["value"]
+    win_pct.groupby(["trajectory", "iteration", "evaluation_season"])["value"]
     .rank(method = "min", ascending = False)
 )
 
 initial_rank = (
     win_pct_last[win_pct_last["evaluation_season"] == 0]
-    .loc[:, ["iteration", "variable", "rank"]]
+    .loc[:, ["trajectory", "iteration", "variable", "rank"]]
     .rename(columns={"rank": "initial_rank"})
 )
 
 # 2. Merge that starting rank onto every row for that team/iteration
 win_pct_with_initial = win_pct_last.merge(
-    initial_rank, on=["iteration", "variable"], how="left"
+    initial_rank, on=["trajectory", "iteration", "variable"], how="left"
 )
 
 # 3. Keep only the "other" seasons (exclude season 0 itself, since that's the conditioning variable)
@@ -351,7 +366,7 @@ plot_df
 # %%
 # Unique facet combinations
 facets = (
-    win_pct_last[["iteration", "evaluation_season"]]
+    win_pct_last[["trajectory", "iteration", "evaluation_season"]]
     .drop_duplicates()
 )
 
@@ -389,7 +404,7 @@ real = nba_win_pct["WinPCT"].to_numpy()
 # Compute Wasserstein distance for each iteration/season
 wasserstein_df = (
     win_pct
-    .groupby(["iteration"])
+    .groupby(["trajectory", "iteration"])
     .agg(
         wasserstein=(
             "value",
@@ -399,21 +414,96 @@ wasserstein_df = (
     .reset_index()
 )
 
+print(wasserstein_df)
+
+summary = (
+    wasserstein_df
+    .groupby("iteration")
+    .agg(
+        wasserstein_mean=("wasserstein", "mean"),
+        wasserstein_sd=("wasserstein", "std"),
+        n=("wasserstein", "count")
+    )
+    .assign(
+        se=lambda d: d.wasserstein_sd / np.sqrt(d.n),
+        lower=lambda d: d.wasserstein_mean - 1.96 * d.se,
+        upper=lambda d: d.wasserstein_mean + 1.96 * d.se,
+    )
+    .reset_index()
+)
+
 wasserstein_df
 
 (
-    ggplot(
-        wasserstein_df,
-        aes(
-            x="iteration",
-            y="wasserstein"
-            )
+    ggplot(summary, aes("iteration", "wasserstein_mean"))
+    + geom_ribbon(
+        aes(ymin="lower", ymax="upper"),
+        alpha=0.2
     )
-    + geom_line()
+    + geom_line(size=1)
     + geom_point()
     + labs(
-        x="Iteration",
+        x="Training iteration",
         y="Wasserstein distance"
     )
     + theme_bw()
+)
+
+
+# print(win_pct)
+# print(real)
+
+#%%
+wasserstein_df = (
+    win_pct
+    .groupby(["iteration", "evaluation_season", "trajectory"])
+    .agg(
+        wasserstein=(
+            "value",
+            lambda x: wasserstein_distance(x.to_numpy(), real)
+        )
+    )
+    .reset_index()
+)
+
+summary = (
+    wasserstein_df
+    .groupby(["iteration", "evaluation_season"])
+    .agg(
+        wasserstein_mean=("wasserstein", "mean"),
+        wasserstein_sd=("wasserstein", "std"),
+        n=("wasserstein", "count")
+    )
+    .assign(
+        se=lambda d: d["wasserstein_sd"] / np.sqrt(d["n"]),
+        lower=lambda d: d["wasserstein_mean"] - 1.96 * d["se"],
+        upper=lambda d: d["wasserstein_mean"] + 1.96 * d["se"],
+    )
+    .reset_index()
+)
+
+(
+    ggplot(
+        summary,
+        aes(
+            x="iteration",
+            y="wasserstein_mean",
+        )
+    )
+    + geom_ribbon(
+        aes(ymin="lower", ymax="upper"),
+        alpha=0.2
+    )
+    + geom_line(size=0.8)
+    + geom_point(size=1.2)
+    + facet_wrap("~evaluation_season", ncol=5)
+    + labs(
+        x="Training iteration",
+        y="Wasserstein distance",
+    )
+    + theme_bw()
+    + theme(
+        figure_size=(14, 6),
+        subplots_adjust={"wspace": 0.25, "hspace": 0.3},
+    )
 )

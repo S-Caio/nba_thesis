@@ -170,7 +170,7 @@ class FreeAgencyEnv(AECEnv):
     def _run_season_boundary(self) -> None:
         self._clear_rewards()
 
-        self.full_draft_order, self.team_standings = simulate_and_reward_season(
+        self.full_draft_order, self.team_standing = simulate_and_reward_season(
             self.league, self.config, self.g_list, self.agent_name_mapping, self.rewards
         )
 

@@ -19,6 +19,7 @@ ACTION_SALARY = 1
 ACTION_CONTRACT_LENGTH = 2
 
 FREE_AGENT_MARKER = 0
+INVALID_MARKER = -1
 
 
 def decode_flat_action(action_idx: int, config: LeagueConfig) -> tuple[int, int, int]:
@@ -41,12 +42,48 @@ def decode_flat_action(action_idx: int, config: LeagueConfig) -> tuple[int, int,
     
     return int(player_idx), int(salary_idx), int(length_idx)
 
-def make_action_mask(state, config, team):
+# def make_action_mask(state, config, team):
+#     team_vec = state.teams[team]
+#     salary = state.team_salaries[team]
+
+#     action_map = config.action_map
+    
+#     # Check to see if signing doesn't exceed salary cap
+#     salary_values = config.salary_ranges[action_map[:, ACTION_SALARY]]
+
+#     min_salary = config.salary_ranges[0]
+#     is_min_contract = (salary_values == min_salary)
+#     salary_mask = (
+#         (salary + salary_values <= config.salary_cap) | (is_min_contract)
+#     )
+    
+#     # Check to see if signing the player doesn't take the team above the maximum number of players
+#     num_players = len(team_vec[team_vec > 0.0])
+#     if num_players + 1 <= config.players_per_team:
+#         num_players_mask = np.ones_like(salary_mask)
+#     else:
+#         num_players_mask = np.zeros_like(salary_mask)
+
+#     # Check to see if player is in the market
+#     player_id_actions = action_map[:, ACTION_PLAYER_ID].astype(int)
+#     available_players_mask = np.where(state.players[player_id_actions, TEAM] == FREE_AGENT_MARKER, 1, 0)
+
+#     mask_all = num_players_mask & salary_mask & available_players_mask
+#     if num_players >= (config.players_per_team - 1):
+#         mask_all = np.append(mask_all, 1)
+#     else:
+#         mask_all = np.append(mask_all, 0)
+
+#     return mask_all
+
+def make_action_mask(state, config, team, free_agent_market):
     team_vec = state.teams[team]
     salary = state.team_salaries[team]
 
     action_map = config.action_map
-    
+    # print(f"Action map: {action_map}")
+    # print(action_map.shape)
+
     # Check to see if signing doesn't exceed salary cap
     salary_values = config.salary_ranges[action_map[:, ACTION_SALARY]]
 
@@ -55,7 +92,7 @@ def make_action_mask(state, config, team):
     salary_mask = (
         (salary + salary_values <= config.salary_cap) | (is_min_contract)
     )
-    
+
     # Check to see if signing the player doesn't take the team above the maximum number of players
     num_players = len(team_vec[team_vec > 0.0])
     if num_players + 1 <= config.players_per_team:
@@ -63,17 +100,25 @@ def make_action_mask(state, config, team):
     else:
         num_players_mask = np.zeros_like(salary_mask)
 
-    # Check to see if player is in the market
-    player_id_actions = action_map[:, ACTION_PLAYER_ID].astype(int)
-    available_players_mask = np.where(state.players[player_id_actions, TEAM] == FREE_AGENT_MARKER, 1, 0)
 
-    mask_all = num_players_mask & salary_mask & available_players_mask
+    # Check if spot in free agency is actually invalid
+    player_id_actions = action_map[:, ACTION_PLAYER_ID].astype(int)
+    player_exists_mask = np.where(free_agent_market[player_id_actions, TEAM] != INVALID_MARKER, 1, 0)
+
+    # Check to see if player is in the market
+    # player_id_actions = action_map[:, ACTION_PLAYER_ID].astype(int)
+    # free_agent_market = make_free_agent_market(state, config)
+    # available_players_mask = np.where(free_agent_market[player_id_actions, TEAM] == FREE_AGENT_MARKER, 1, 0)
+
+    # mask_all = num_players_mask & salary_mask & available_players_mask
+    mask_all = num_players_mask & salary_mask & player_exists_mask
     if num_players >= (config.players_per_team - 1):
         mask_all = np.append(mask_all, 1)
     else:
         mask_all = np.append(mask_all, 0)
 
     return mask_all
+
 
 
 def handle_signing(state: LeagueState, config: LeagueConfig, agent: str, action) -> None:
@@ -122,7 +167,35 @@ def handle_signing(state: LeagueState, config: LeagueConfig, agent: str, action)
     state.players[player_id, SALARY] = offered_salary
 
 
-def submit_offer(state: LeagueState, config: LeagueConfig, agent: str, action) -> None:
+def make_free_agent_mapping(league, config):
+    """
+    Maps from free agent ids to the player matrix id
+    """
+    mapping = np.full(config.n_free_agents, -1, dtype=np.int32)
+
+    player_ids = np.flatnonzero(
+        league.players[:, TEAM] == FREE_AGENT_MARKER
+    )
+
+    n = min(len(player_ids), config.n_free_agents)
+    mapping[:n] = player_ids[:n]
+
+    return mapping
+
+
+def make_free_agent_market_and_mapping(league, config):
+    n_free_agent = config.n_players - ((config.players_per_team // 2) * config.n_teams)
+    free_agent_market = -np.ones((n_free_agent, league.players.shape[1]))
+
+    free_agent_idx = league.players[:, TEAM] == FREE_AGENT_MARKER
+    fr = league.players[free_agent_idx, :]
+
+    n_to_copy = min(len(fr), n_free_agent)
+    free_agent_market[:n_to_copy, :] = fr[:n_to_copy, :]
+
+    return free_agent_market, make_free_agent_mapping(league, config)
+
+def submit_offer(state: LeagueState, config: LeagueConfig, agent: str, action, free_agent_mapping) -> None:
     """
     Record `agent`'s offer for this round; does NOT sign anyone.
     Same guard clauses as before, just deferred execution.
@@ -130,7 +203,17 @@ def submit_offer(state: LeagueState, config: LeagueConfig, agent: str, action) -
     if action == config.n_proper_actions:
         return  # NULL action -- no offer this round
 
-    player_id, salary_idx, contract_len_idx = decode_flat_action(action, config)
+    fa_slot, salary_idx, contract_len_idx = decode_flat_action(action, config)
+    # print(action)
+    # print(fa_slot)
+    # print(config.n_free_agents)
+    # print(len(free_agent_mapping))
+    
+    player_id = free_agent_mapping[fa_slot]
+
+    if player_id == -1:
+        return
+    
     offered_salary = config.salary_ranges[salary_idx]
 
     if state.players[player_id, TEAM] != FREE_AGENT_MARKER:

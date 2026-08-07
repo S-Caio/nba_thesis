@@ -49,9 +49,13 @@ class LeagueConfig:
 
     action_map: np.ndarray = field(init=False, repr=False)
 
+    @property
+    def n_free_agents(self) -> int:
+        return self.n_players - ((self.players_per_team // 2) * self.n_teams)
+
     def __post_init__(self):
         grid = np.mgrid[
-            0:self.n_players,
+            0:self.n_free_agents,
             0:len(self.salary_ranges),
             0:len(self.contract_lengths)
         ]
@@ -64,4 +68,7 @@ class LeagueConfig:
 
     @property
     def n_proper_actions(self) -> int:
-        return self.n_players * len(self.salary_ranges) * len(self.contract_lengths)
+        return self.n_free_agents * len(self.salary_ranges) * len(self.contract_lengths)
+
+
+
