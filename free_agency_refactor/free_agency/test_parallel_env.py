@@ -12,6 +12,9 @@ from free_agency.env_parallel import FreeAgencyEnv
 env = FreeAgencyEnv(render_mode="human")
 observations, infos = env.reset()
 
+print("Teams in the beginning:")
+print(env.league.teams["team_0"])
+
 # print(observations["team_0"]["cap_projection"])
 # print(infos)
 
@@ -60,8 +63,9 @@ for k, v in obs.items():
 
 
 
-
 # %%
+
+print(len(env.league.players))
 
 #%%
 from free_agency.contracts import FREE_AGENT_MARKER, ACTION_CONTRACT_LENGTH, ACTION_SALARY, ACTION_PLAYER_ID

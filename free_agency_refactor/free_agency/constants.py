@@ -18,9 +18,10 @@ AGE = 2
 CONTRACT_LEN = 3
 SALARY = 4
 OFFERS = 5
+POTENTIAL = 6
 
 
-N_PLAYER_COLS = 6
+N_PLAYER_COLS = 7
 HISTORY_WINDOW = 3
 CAP_HORIZON = 5
 
@@ -37,7 +38,7 @@ class LeagueConfig:
     # Signing action space
     salary_ranges: np.ndarray = field(default_factory=lambda: np.array([1, 5, 10, 15, 20, 25, 30]))
     # salary_ranges: np.ndarray = field(default_factory=lambda: np.arange(0, 35, 5))
-    contract_lengths: np.ndarray = field(default_factory=lambda: np.arange(1, 6))
+    contract_lengths: np.ndarray = field(default_factory=lambda: np.arange(1, 5))
 
     # Rookie draft
     rookie_contract_len: int = 4
@@ -45,7 +46,7 @@ class LeagueConfig:
     n_new_entrants_per_season: int = 60
 
     # Season simulation
-    season_noise_scale: float = 10.0
+    season_noise_scale: float = 5.0
 
     action_map: np.ndarray = field(init=False, repr=False)
 

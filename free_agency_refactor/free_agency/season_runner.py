@@ -24,7 +24,7 @@ import numpy as np
 from .constants import LeagueConfig
 from .state import LeagueState
 from .season_sim import play_season, draft_lottery, seed_position
-from .reward import reward_func  # your existing reward-shaping function
+from .utils import reward_func  # your existing reward-shaping function
 
 PLAYOFF_CUTOFF = 16  # positions 1-16 make the playoffs; matches the original
 

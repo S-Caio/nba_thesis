@@ -510,6 +510,219 @@ I am also looking to pull some more levers. Specifically, I am thinking of chang
 
 Then, of course, is the calibration idea, where I let the network see some key parameters (noise scale, shape or mean for lognormal distribution of rookies) and then vary it during episodes so that I can see which combinations yield the smallest distance to the real NBA distribution.
 
+== August 7, 2026
+
+Tests went through. Little improvement. I made this plot of the Wasserstein distance per season. It still isn't going very well. The first season still retains the bi-modality, but it is in the opposite direction of what I want. Later seasons are decent, but they don't have that distinctive bi-modal shape; more of a bell-curve (though I will argue the top does have some interesting features)
+
+#figure(
+  image("figs/wasserstein_per_season_7_august.png", width : 75%)
+)
+
+#figure(
+  image("figs/win_pct_7_august.png", width : 75%)
+)
+
+Though, on the bright side, I did manage to reduce iteration time somewhat. For better results I will reduce the number of players in total (maybe 330 instead of 390) and I will remove the 5-year contract length. That should save some space in the action mask, which is my heaviest observation.
+
+Furthermore, I will also apply the multiplier to the reward function, as discussed last time. I want teams to want to win. Let's see what that does. If that doesn't provoke a change, I will mess with the lognormal again, as discussed last time.
+
+
+== August 10, 2026
+
+I am back after doing some work the last few days. I am also on holiday with the family so I have less time to dedicate to this unfortunately. But there have been quite a few developments since last time.
+
+First, I tried scaling the reward function by 5, but that had no effect. Instead, I changed the shape of the function by reducing $k$ from $0.3$ to $0.15$. That makes the descent in reward shallower, giving some significant weight to finishing in 16th, for example. I am also considering giving $0$ reward to teams that don't make the playoffs, but I am not ready to make that step just yet. It could lead to some weird behaviour around the edges of the playoff bracket. I suppose this edge behaviour does exist, but I won't include it just yet. I want teams to still have some gradient if they finish badly. $0$ reward would kill that.
+
+#figure(
+  cetz.canvas({
+    import cetz.draw: *
+
+    set-style(
+      axes: (
+        grid: (stroke: gray + 0.4pt),
+      ),
+    )
+
+    plot.plot(
+      size: (12, 7),
+
+      x-min: 1,
+      x-max: 30,
+
+      y-min: 0,
+      y-max: 1.05,
+
+      x-label: [League position],
+      y-label: [Reward],
+
+      x-ticks: (1, 5, 10, 16, 25, 30),
+      x-tick-step: none,
+      y-ticks: (0, 0.2, 0.4, 0.6, 0.8, 1.0),
+      y-tick-step: none,
+
+      x-grid: "major",
+      y-grid: "major",
+
+      legend: "inner-north-east",
+
+      {
+        plot.add(
+          domain: (1, 30),
+          x => calc.exp(-0.15 * (x - 1)),
+          label: [$R(p) = e^(-0.15(p-1))$],
+        )
+        plot.add(
+          domain: (1, 30),
+          x => calc.exp(-0.3 * (x - 1)),
+          label: [$R(p) = e^(-0.3(p-1))$]
+        )
+      }
+    )
+  }),
+  caption: [Old (red) and new (blue) reward curves]
+)
+
+The most significant development was that I started looking into my player development system. I found out that my original curves were wildly miscalibrated, with young players experiencing rapid, sustained improvement which made it clearly advantageous to tank in the beginning in order to get the best talent. So I worked (with considerable help from Claude) on two improved systems.  
+
+The system `v2` was based on multiplicative growth instead of additive. This was easier to calibrate, as a player of rating 0.4 wouldn't suddenly get a $+2$ just by being 19 years old. Instead, it adapted to the player's original rating, which made it so that the rating structure was kept more stable.
+
+Namely, we define a drift function $f("age", "potential")$, which looks like this:
+
+$
+  f("age", "potential") = cases(
+    0.015 * (27 - "age") + 0.03 * ("potential" - 1.0)  & "if" "age" <= 27,
+  -0.02 * ("age" - 27) & "otherwise",
+)
+$
+
+Potential is a new attribute which I draw from a lognormal, such that I get long-tail outcomes. It has the power to speed up development.
+
+Then we add some normal noise to the function and exponentiate the result. The product of this operation multiplies the current rating $x_t$ to arrive at $x_(t+1)$:
+
+$
+  x_(t+1) = x_(t) dot exp(f("age", "potential") + epsilon)
+$
+$
+  epsilon tilde "N"(0, sigma)
+$
+
+So it is basically a random walk with drift depending on age and potential. This worked decently well, but ratings still increased over the season, or at least the influence of the best players relative to your median player.
+
+Thus, I tried another candidate, which I called `v3`. I wanted to keep the distribution of talent more or less the same throughout an episode. This one is a bit more complicated. We start by defining and age curve, $g("age")$:
+$
+  g("age") = cases(
+    2 dot exp(-0.03 (27 - "age")) & "if" "age" <= 27,
+    2 dot exp(-0.025 ("age" - 27)) & "otherwise"
+  )
+$ 
+
+The "otherwise" expression is just there to be make the descent a little slower. 
+
+After we get the age curve, we take rating and potential into log-space. Remember that a lognormal is simply just a normal curve exponentiated, so taking it to a log makes it normal again. I will express logged version of a variable with $x'$ and $z'$ for $log(x)$ and $log("potential")$, respectively.
+
+$
+  u = log(g("age")) + log("potential") \
+  x'_(t+1) = x'_t + kappa (u - x'_t) + epsilon \
+  x_(t + 1) = exp(x'_(t+1))
+$
+
+So it is important to break things down here. In the target we see the addition of the log of the age factor and the log of the potential factor, but remember that $log(x) + log(y) = log(x y)$. Basically the potential modifer tells us how above and beyond (or below) a player goes in terms of their development relative to their age. If a player has potential 1, then the player only gets a potential boost equal to the age factor #footnote($u = log(g("age") dot "potential")$). If potential is 2, then that player develops twice as quickly as the age factor would imply. In fact, the development is always twice as powerful.
+
+So the target is this new addition of age and potential. The new rating, still in log-space, goes in the direction of the difference between the target and the current rating, $u - x'$. $kappa$ controls how tightly players go towards their target. And we have some normal noise, of course.
+
+I implemented these three and tracked the percentiles of talent throughout Monte-Carlo simulations of seasons, which can be seen below.
+
+#figure(
+  image("figs/rating_distribution_over_time_august_10.pdf", width : 75%)
+)
+
+The light ribbons represent the 90th and 10th percentiles, while the darker grey is the 75th and 25th percentile. The black line is the median.
+
+
+There was a clear explosion in talent during the duration of an episode. I think that is why tanking was so prevalent previously. The other two are much more stable. This can also be shown by the ratio of players in the 90th percentile over the ratings of the 50th percentile. 
+
+#figure(
+  image("figs/ratio_plot_august_10.pdf", width : 75%)
+)
+
+So `v3` keeps the most stable ratings. It does seems to suffer from a slight decline throughout the episode for most players, though the 90th percentile remains more or less stable. I want to play around some more to stem this loss, but now the ratings are much more well behaved.
+
+It is important to note that I also changed the distributions of players. The original cohort is drawn from a $"lognormal(1, 0.5)"$ distribution, while the cohort of rookies comes from a $"lognormal"(0.5, 0.5)$. I'm not sure these numbers are what I want though. I think I may be underrating how important star players are. Maybe players at the 90th percentile should be around 2 times as good as the median. And maybe I also need to adjust the potential draws to keep a sort of stable ratings population. Or increase the shape parameter of the lognormal. Make extreme values more likely.
+
+There are many more ideas as well! One is to vary the location parameter of the rookie distribution. I can make it be drawn from a normal, such that a rookie class is unpredictable in its quality. Another is to make teams draft not just automatically from rookie rating, but rather from some noisy combination of potential and current rating. I think that could be cool!
+
+To end things, I have two pragmatic goals I have to think of. The first is that I want the talent distribution to remain pretty much constant throughout an episode. With the current parameters of `v3` there is a gentle downgrade in talent quality. I think I can fix this by increasing the location parameter in the rookie class, so that they start out closer to the original class. The second issue is that I want stars to really be stars and be a lot better than the median player. Right now the 90th percentile starts at around 1.5 times the median talent. I don't know if I have to look higher (95th percentile, maybe) but there may not be enough demand for stars in this league. I can change this be increasing the scale/shape parameter of the lognormals. 
+
+== August 14, 2026
+
+I have some positive news! I worked on making training faster, which involved a lot of messing around with hyperparameters. I don't think I have the final combination yet, but I was actually able to train for around 6000 iterations this time around. And the results are encouraging! I plotted the Wasserstein metric between real NBA seasons and my simulations, and we can see a nice downward slope. It is *crucial* to note that I changed the way I calculate the Wasserstein metric here. Instead of pooling all real seasons together and using that as a reference, I calculate the metric against every individual real season. This is somewhat more honest#footnote("And usually larger than the pooled version"), as it doesn't muddle together a sort of "average season shape," but instead looks at all seasons combined. Unfortunately it still uses that sort of average shape on the simulation side. It would be too computationally expensive to look at all trajectory-iteration-season shapes.
+
+So the shape of the curve is encouraging. We are getting closer and closer to an NBA shape. I should also note that when I initially calculated with the pooled Wasserstein distance I found results as low as 0.02. What is concernng though, when we look at the plot below, is that my simulations have more similarity with the old NBA system than the current one. So while I see a significant improvement on the Wasserstein metric, it seems that on net I am getting closer to approximating the old NBA system than the current one. I am not extremely worried about this yet, but it is something to keep in mind.
+
+#figure(
+  image("figs/wassertein_two_comparison_14_08.pdf", width : 75%)
+)
+
+
+On that topic, I also wonder whether Wasserstein is the best metric to watch given that I am operating on a region of bounded support. The distance statistic will invariably have a very small range. Does a 0.02 to mean a bad fit, whereas 0.01 is great? Moreover, since the distance between two systems is only 0.0116, can this metric accurately measure the distance between dstributions? I could try to answer other questions, such as how persistently does an NBA team remain on top or at the bottom? How fast does a team rise, and so on? These could be incorporated into loss function for my calibration.
+
+Anyway, getting back to the real topic. If I look at which seasons drive the discrepancy in Wasserstein metric, I find that 2022-23 and 2023-24 are the root cause of this spike. Otherwise, it seems like the current and old systems are more or less on-par with each other. Earlier seasons of the old system are the most similar to my current system, it seems.
+
+#figure(
+  image("figs/wasserstein_time_plot_14_08.pdf", width : 75%),
+  caption: "Computed using the last 100 simulated update trajectories."
+)
+
+This is interesting. The 2023-24 season is when the new CBA came into being, but the spike in Wasserstein distance happens one season earlier, in 2023-24. So in the interest of investigation, here are the density plots for all seasons:
+
+#figure(
+  grid(
+    columns: (1fr, 1fr),
+    gutter: 1em,
+    image("figs/all_season_densities.pdf", width: 100%),
+    image("figs/all_season_densities_all_together.pdf", width: 100%),
+  ),
+  caption: [NBA win percentage densities]
+)
+
+The most distinctive feature of the two seasons is how concentrated they are. You can see in the right panel that 2022-23 and 2023-24 have some of the highest spikes, while the simulated seasons most similar to the real NBA seem to be those that have a flatter, less concentrated shape, such as 2010-11 or 2012-13. I wonder if this isn't because I am not disambiguating between trajectories and individual seasons when computing the Wasserstein distance. It could be that the combination of many seasons gives that sort of muddled flat shape, while real individual variation washes away. Worth checking for sure. If it gets computationally hard I can restrict to just the last few training iterations perhaps.
+
+Looking at the actual shape of the seasons, it does seem like the desired shape is coming together. Season 4, for example, has a beautiful shape, with some winning teams and some clear tanking teams. It looks like a mixture of distributions. Seasons 5-7 have a sort of muddled shape, it seems, though it hides some significant heterogeneity in terms of individual trajectories.
+
+#figure(
+  image("figs/last_iter_densities_14_08.pdf", width : 75%)
+)
+
+And for a really crazy plot I compared every density that you see above to every density of the current system:
+
+#figure(
+  image("figs/every_season_vs_every_season_curr_14_august.png", width : 100%)
+)
+
+This really drives home the fact that the 2022-23 and 2023-24 seasons were relative outliers, as none of the simulated seasons seem to fit them very well, whereas the other seasons are fit much better. This might be a call to look at the *median Wasserstein distance* instead of the mean, since it parses out these relative effects.
+
+It also seems to me like the first simmed season doesn't fit a lot of real seasons very well. I could maybe use it as a throaway season at some point. I will have to decide later though.
+
+In reality, I am still doing this based off of not so much data, so here is what I am going to do. First, I will look into calculating the per-season Wasserstein distance instead of pooling across all seasons. Then, I will also try to collect more data in a new script using the latest saved version of my agents. That will solidify my conclusions. And I will port the current plots onto this new script, obviously.
+
+
+// Liftoff! I finally have some really good news to share. I worked on making training faster, which involved a lot of messing around with hyperparameters. I don't think I have the final combination yet, but I was actually able to train for around 6000 iterations this time around. And the results are pretty great! Below we can see the wassertein metric between the real NBA and mt simulations throughout training:
+
+// #figure(
+//   image("figs/wasserstein_14_august.png", width : 75%)
+// )
+
+// It has a beautiful descending slope! And I now get the Wasserstein metric to around 0.2. There is still a little worry inside of me, because the Wasserstein distance between the distribution of current-system win percentages vs old-system win percentages is 0.0116. Thus, the difference between both systems is still smaller than the difference between the current NBA system and my simulation. Nevertheless, this is some positive signal.
+
+// On that topic, I also wonder whether Wasserstein is the best metric to watch given that I am operating on a region of bounded support. The distance statistic will invariably have a very small range. Does a 0.02 to mean a bad fit, whereas 0.01 is great? Moreover, since the distance between two systems is only 0.0116, can this metric accurately measure the distance between dstributions? I could try to answer other questions, such as how persistently does an NBA team remain on top or at the bottom? How fast does a team rise, and so on? These could be incorporated into loss function for my calibration.
+
+// And there is another problem. If I also calculate the distance between my simulated seasons and the old free agency system we find that the simulated seasons actually resemble the old system better than they resemble the current draft system:
+
+
+
+
+
+
 
 #pagebreak()
 

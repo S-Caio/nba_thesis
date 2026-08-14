@@ -2,6 +2,9 @@
 import numpy as np
 import pandas as pd
 from plotnine import *
+from datetime import datetime
+
+today = datetime.today().strftime('%d_%m')
 # %%
 win_pct = pd.read_csv("free_agency_env_win_pct.csv")
 # win_pct[win_pct["iteration"] == 1037]
@@ -39,16 +42,56 @@ p = (
 )
 p
 
+#%%
+last_iter = win_pct[win_pct["iteration"] == win_pct["iteration"].max()]
+
+last_iter_plot = (
+    ggplot(last_iter, aes(x = "value")) +
+    geom_density() +
+    facet_grid(rows = "evaluation_season", cols = "trajectory")
+    + theme(figure_size=(16, 12))
+)
+
+last_iter_plot
+
+#%%
+
+last_iter = last_iter.copy()
+last_iter["trajectory"] = last_iter["trajectory"].astype(str)
+
+last_iter_densities = (
+    ggplot(last_iter, aes(x="value"))
+    + geom_density(
+        aes(group="trajectory"),
+        color="#4682B466",
+        alpha=0.05,
+        size=0.6
+    )
+    + geom_density(
+        color="navy",
+        size=1.5
+    )
+    + facet_wrap("~evaluation_season")
+)
+
+last_iter_densities.show()
+
+last_iter_densities.save(f"../project_diary/figs/last_iter_densities_{today}.pdf")
+
+
 
 #%%
 
 
 win_pct_last = win_pct[(win_pct["iter_group"] == win_pct["iter_group"].max())]
+win_pct_last["trajectory"] = win_pct_last["trajectory"].astype(str)
 
 p_last_group = (
-    ggplot(win_pct_last, aes(x = "value")) +
-    geom_density() +
-    facet_wrap("~evaluation_season")
+    ggplot(win_pct_last, aes(x = "value")) 
+    + geom_density(aes(color = "trajectory"),
+                   size = 0.5)
+    + geom_density(size = 2)
+    + facet_wrap("~evaluation_season")
 
 )
 
@@ -334,23 +377,37 @@ p_reward_decay_last
 #%%
 # Bringing in real NBA data
 
-nba_win_pct = pd.read_csv("../initial_code/current_system_win_pct_series.csv")
-nba_win_pct
-(
-    ggplot(nba_win_pct, aes(x = "WinPCT")) +
+real_data = pd.read_csv("../initial_code/nba_team_historical_percentiles.csv")
+nba_curr_df = real_data[real_data["system"] == "Current"]
+nba_win_pct_curr = pd.DataFrame(nba_curr_df["WinPCT"])
+p_curr = (
+    ggplot(nba_win_pct_curr, aes(x = "WinPCT")) +
     geom_density()
+    + xlim(0, 1)
 )
 
+nba_old_df = real_data[real_data["system"] == "Old"]
+nba_win_pct_old = pd.DataFrame(nba_old_df["WinPCT"])
+nba_win_pct_old
+
+p_old = (
+    ggplot(nba_win_pct_old, aes(x = "WinPCT")) +
+    geom_density()
+    + xlim(0, 1)
+)
+
+display(p_curr)
+display(p_old)
 #%%
 
 # Simulated data
-sim = win_pct[["value"]].copy()
+sim = win_pct_last[["value"]].copy()
 sim["dataset"] = "Simulation"
 sim = sim.rename(columns={"value": "win_pct"})
 
 # NBA data
-real = nba_win_pct[["WinPCT"]].copy()
-real["dataset"] = "NBA"
+real = nba_win_pct_curr[["WinPCT"]].copy()
+real["dataset"] = "NBA Current"
 real = real.rename(columns={"WinPCT": "win_pct"})
 
 # Combine
@@ -373,7 +430,7 @@ facets = (
 # Cross join
 nba_facet = (
     facets.merge(
-        nba_win_pct[["WinPCT"]],
+        nba_win_pct_curr[["WinPCT"]],
         how="cross"
     )
     .rename(columns={"WinPCT": "value"})
@@ -395,30 +452,61 @@ p = (
 )
 
 display(p)
+
 #%%
 from scipy.stats import wasserstein_distance
 
 # Real distribution
-real = nba_win_pct["WinPCT"].to_numpy()
+real_curr = nba_win_pct_curr["WinPCT"].to_numpy()
 
-# Compute Wasserstein distance for each iteration/season
-wasserstein_df = (
-    win_pct
-    .groupby(["trajectory", "iteration"])
-    .agg(
-        wasserstein=(
-            "value",
-            lambda x: wasserstein_distance(x.to_numpy(), real)
-        )
+real_old = nba_win_pct_old["WinPCT"].to_numpy()
+
+def calc_wasserstein_df(real_df, df_simmed, comparison_point=None,
+                          season_col="Season", value_col="WinPCT"):
+    real_seasons = {
+        season: grp[value_col].to_numpy()
+        for season, grp in real_df.groupby(season_col)
+    }
+
+    def per_season_distances(sim_values):
+        sim_values = sim_values.to_numpy()
+        return pd.Series({
+            season: wasserstein_distance(sim_values, season_data)
+            for season, season_data in real_seasons.items()
+        })
+
+    # long format: one row per trajectory x iteration x real season
+    detail_df = (
+        df_simmed
+        .groupby(["trajectory", "iteration"])["value"]
+        .apply(per_season_distances)
+        .rename_axis(index=["trajectory", "iteration", "real_season"])
+        .reset_index(name="wasserstein")
     )
-    .reset_index()
-)
 
-print(wasserstein_df)
+    if comparison_point:
+        detail_df["comparison_point"] = comparison_point
+
+    # aggregated: mean across real seasons, per trajectory x iteration
+    agg_df = (
+        detail_df
+        .groupby(["trajectory", "iteration"] + (["comparison_point"] if comparison_point else []))
+        .agg(wasserstein=("wasserstein", "mean"))
+        .reset_index()
+    )
+
+    return detail_df, agg_df
+
+detail_curr, wasserstein_df_curr = calc_wasserstein_df(nba_curr_df, win_pct, comparison_point="Current")
+detail_old, wasserstein_df_old = calc_wasserstein_df(nba_old_df,  win_pct, comparison_point="Old")
+
+detail_df_all = pd.concat([detail_curr, detail_old])
+wasserstein_df_all = pd.concat([wasserstein_df_curr, wasserstein_df_old])
+
 
 summary = (
-    wasserstein_df
-    .groupby("iteration")
+    wasserstein_df_all
+    .groupby(["iteration", "comparison_point"])
     .agg(
         wasserstein_mean=("wasserstein", "mean"),
         wasserstein_sd=("wasserstein", "std"),
@@ -432,12 +520,12 @@ summary = (
     .reset_index()
 )
 
-wasserstein_df
+summary
 
-(
-    ggplot(summary, aes("iteration", "wasserstein_mean"))
+p_wass = (
+    ggplot(summary, aes("iteration", "wasserstein_mean", color = "comparison_point"))
     + geom_ribbon(
-        aes(ymin="lower", ymax="upper"),
+        aes(ymin="lower", ymax="upper", fill = "comparison_point"),
         alpha=0.2
     )
     + geom_line(size=1)
@@ -446,12 +534,195 @@ wasserstein_df
         x="Training iteration",
         y="Wasserstein distance"
     )
-    + theme_bw()
+    + theme_bw(base_size = 18)
+    + theme(figure_size = (12, 8))
+)
+
+display(p_wass)
+p_wass.save(f"../project_diary/figs/wassertein_two_comparison_{today}.pdf")
+
+
+(
+    detail_df_all
+    .groupby(["real_season", "comparison_point"])
+    .agg(mean_wasserstein=("wasserstein", "mean"))
+    .reset_index()
+)
+
+# detail_df_all["real_season"] = pd.
+#%%
+def order_seasons(seasons):
+    """Given an iterable of season strings like '2019-20', return them
+    sorted chronologically by start year."""
+    unique_seasons = pd.Series(seasons).unique()
+    start_year = pd.Series(unique_seasons).str.slice(0, 4).astype(int)
+    return list(unique_seasons[start_year.argsort()])
+
+season_order = order_seasons(detail_df_all["real_season"])
+
+detail_df_all["real_season"] = pd.Categorical(
+    detail_df_all["real_season"],
+    categories=season_order,
+    ordered=True
 )
 
 
-# print(win_pct)
-# print(real)
+detail_df_all["iter_group"] = detail_df_all["iteration"] // 100
+detail_df_last = detail_df_all[detail_df_all["iter_group"] == detail_df_all["iter_group"].max()]
+
+
+season_summary = (
+    detail_df_last
+    .groupby(["real_season", "comparison_point"], observed=True)
+    .agg(
+        wasserstein_mean=("wasserstein", "mean"),
+        wasserstein_sd=("wasserstein", "std"),
+        n=("wasserstein", "count")
+    )
+    .assign(
+        se=lambda d: d.wasserstein_sd / np.sqrt(d.n),
+        lower=lambda d: d.wasserstein_mean - 1.96 * d.se,
+        upper=lambda d: d.wasserstein_mean + 1.96 * d.se,
+    )
+    .reset_index()
+)
+
+p_wass_season = (
+    ggplot(season_summary, aes("real_season", "wasserstein_mean", color="comparison_point", group="comparison_point"))
+    + geom_ribbon(
+        aes(ymin="lower", ymax="upper", fill="comparison_point"),
+        alpha=0.2
+    )
+    + geom_line(size=1)
+    + geom_point()
+    + labs(
+        x="Real season",
+        y="Wasserstein distance"
+    )
+    + theme_bw(base_size=18)
+    + theme(figure_size=(12, 8), axis_text_x=element_text(rotation=45, hjust=1))
+)
+
+display(p_wass_season)
+p_wass_season.save(f"../project_diary/figs/wasserstein_time_plot_{today}.pdf")
+
+#%%
+sim_df = last_iter.copy()
+
+sim_df["evaluation_season"] = sim_df["evaluation_season"].astype(int)
+sim_df["source"] = "Simulated"
+
+
+# ------------------------------------------------------------
+# Real NBA data
+# ------------------------------------------------------------
+
+real_df = nba_curr_df[["Season", "WinPCT"]].copy()
+
+real_df = real_df.rename(
+    columns={"WinPCT": "value"}
+)
+
+real_df["source"] = "Real"
+real_df["real_Season"] = real_df["Season"]
+
+real_df = real_df.drop(columns="Season")
+
+
+# ------------------------------------------------------------
+# Get all seasons
+# ------------------------------------------------------------
+
+sim_seasons = sorted(sim_df["evaluation_season"].unique())
+real_seasons = sorted(real_df["real_Season"].unique())
+
+
+# ------------------------------------------------------------
+# Replicate simulated distributions across every
+# real NBA season
+# ------------------------------------------------------------
+
+sim_plot = sim_df.merge(
+    pd.DataFrame({"real_Season": real_seasons}),
+    how="cross"
+)
+
+
+# ------------------------------------------------------------
+# Replicate real distributions across every
+# simulated evaluation season
+# ------------------------------------------------------------
+
+real_plot = real_df.merge(
+    pd.DataFrame({"evaluation_season": sim_seasons}),
+    how="cross"
+)
+
+
+# ------------------------------------------------------------
+# Combine
+# ------------------------------------------------------------
+
+plot_df = pd.concat(
+    [
+        sim_plot[
+            ["evaluation_season", "real_Season", "value", "source"]
+        ],
+        real_plot[
+            ["evaluation_season", "real_Season", "value", "source"]
+        ],
+    ],
+    ignore_index=True
+)
+
+
+# ------------------------------------------------------------
+# Plot
+# ------------------------------------------------------------
+
+p = (
+    ggplot(
+        plot_df,
+        aes(
+            x="value",
+            color="source"
+        )
+    )
+    + geom_density(size=1.2)
+    + facet_grid(
+        "evaluation_season ~ real_Season"
+    )
+    + labs(
+        x="WinPCT",
+        y="Density",
+        color="Data"
+    )
+    + theme_bw()
+)
+
+p.show()
+
+# p = (
+#     ggplot(
+#         plot_df,
+#         aes(
+#             x="value",
+#             color="source"
+#         )
+#     )
+#     + geom_density(size=1.2)
+#     + facet_grid(
+#         "evaluation_season ~ real_Season"
+#     )
+#     + labs(
+#         x="WinPCT",
+#         y="Density",
+#         color="Data"
+#     )
+#     + theme_bw()
+# )
+
+# p.show()
 
 #%%
 wasserstein_df = (
@@ -460,7 +731,7 @@ wasserstein_df = (
     .agg(
         wasserstein=(
             "value",
-            lambda x: wasserstein_distance(x.to_numpy(), real)
+            lambda x: wasserstein_distance(x.to_numpy(), real_curr)
         )
     )
     .reset_index()

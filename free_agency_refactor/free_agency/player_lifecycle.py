@@ -11,12 +11,12 @@ evolve_func, retirement_risk`).
 import numpy as np
 from scipy import stats
 
-from .constants import LeagueConfig, RATING, TEAM, AGE, CONTRACT_LEN, SALARY
+from .constants import LeagueConfig, RATING, TEAM, AGE, CONTRACT_LEN, SALARY, POTENTIAL
 from .state import LeagueState, _generate_players
 from .rosters import get_team_counts
 
 # Plug in your real implementations here:
-from .utils import evolve_func, retirement_risk
+from .utils import evolve_func, evolve_v2, evolve_v4, age_curve, retirement_risk
 
 
 def player_update(state: LeagueState) -> None:
@@ -29,20 +29,22 @@ def player_update(state: LeagueState) -> None:
     """
     ratings = state.players[:, RATING].copy()
     age = state.players[:, AGE].copy()
+    potential = state.players[:, POTENTIAL].copy()
 
     state.players[:, AGE] = age + 1
-    state.players[:, RATING] = [evolve_func(r, a) for r, a in zip(ratings, age)]
+    state.players[:, RATING] = [evolve_v4(r, a, p) for r, a, p in zip(ratings, age, potential)]
     state.players[:, RATING] = np.clip(state.players[:, RATING], 0.1, np.inf)
 
 
 def new_entrants(n_new_players: int, age_mean: float = 21, age_std: float = 1,
-                  rating_shape: float = 0.85) -> np.ndarray:
+                rating_mean = 0.95, rating_shape = 0.75) -> np.ndarray:
 
     entrants = _generate_players(
         n_players = n_new_players,
         age_mean = age_mean,
         age_std=age_std,
-        rating_shape=rating_shape
+        rating_loc=rating_mean,
+        rating_shape = rating_shape
     )
     # ratings = stats.lognorm.rvs(loc=0, s=rating_shape, size=n_new_players)
     # teams = np.zeros(n_new_players)
@@ -127,7 +129,7 @@ def assign_rookie_draft(state: LeagueState, config: LeagueConfig,
 
 
 def run_rookie_draft(state: LeagueState, config: LeagueConfig, full_draft_order: list[str],
-                      n_to_retire: int = 60) -> None:
+                    n_to_retire: int = 60) -> None:
     """Thin orchestrator, kept for backward compatibility with env.py's
     existing call site -- same signature and behavior as before."""
     rookie_idx = churn_player_pool(state, n_to_retire=n_to_retire)

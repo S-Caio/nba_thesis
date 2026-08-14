@@ -36,6 +36,7 @@ class FreeAgencyEnv(ParallelEnv):
         self.agent_name_mapping = dict(zip(self.possible_agents, nba_teams))
         self.render_mode = render_mode
 
+
         self.league = new_league_state(self.config, self.possible_agents)
         initial_endowment(self.league, self.config)
         rebuild_rosters(self.league, self.config)

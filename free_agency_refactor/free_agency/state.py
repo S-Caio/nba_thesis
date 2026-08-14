@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import stats
 
-from .constants import LeagueConfig, RATING, TEAM, AGE, CONTRACT_LEN, SALARY, OFFERS
+from .constants import LeagueConfig, RATING, TEAM, AGE, CONTRACT_LEN, SALARY, OFFERS, POTENTIAL
 
 
 @dataclass
@@ -61,8 +61,10 @@ def record_season_history(league: LeagueState, agent: str, win_pct: float, team_
     league.team_has_history[agent] = 1.0
 
 def _generate_players(n_players: int, age_mean: float = 27, age_std: float = 4,
-                       rating_shape: float = 1.0) -> np.ndarray:
-    ratings = sorted(stats.lognorm.rvs(loc=0, s=rating_shape, size=n_players), reverse=True)
+                      rating_loc: float = 1.0, rating_shape: float = 0.7, potential_loc = 0.0, potential_shape = 0.6) -> np.ndarray:
+    ratings = sorted(stats.lognorm.rvs(loc=rating_loc, s=rating_shape, size=n_players), reverse=True)
+
+    potential = stats.lognorm.rvs(loc = potential_loc, s = potential_shape, size = n_players)
     zero_array = np.zeros(n_players) # Used for teams, contract_lens, salaries, and offers
     # teams = np.zeros(n_players)
     ages = np.clip(np.round(np.random.normal(age_mean, age_std, size=n_players)), 19, 40)
@@ -76,6 +78,7 @@ def _generate_players(n_players: int, age_mean: float = 27, age_std: float = 4,
         zero_array, # Contract lens
         zero_array, # Salaries
         zero_array, # Offers
+        potential,
         ]).T
 
 def agent_to_team_id(agent: str) -> int:
@@ -119,12 +122,12 @@ def initial_endowment(state, config):
     # Assigning players to teams
     state.players[players_to_assign, TEAM] = team_ids
 
-
+    p = [0.325, 0.325, 0.3, 0.05, 0.0] if len(config.contract_lengths) == 5 else [0.325, 0.325, 0.3, 0.05]
     # Assigning contract lengths to players (bias towards shorter contracts)
     c_lengths = np.random.choice(config.contract_lengths,
                     size = n_picked_players,
                     replace = True,
-                    p = [0.325, 0.325, 0.3, 0.04, 0.01]
+                    p = p
     )
     state.players[players_to_assign, CONTRACT_LEN] = c_lengths
 
