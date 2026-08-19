@@ -478,9 +478,9 @@ def calc_wasserstein_df(real_df, df_simmed, comparison_point=None,
     # long format: one row per trajectory x iteration x real season
     detail_df = (
         df_simmed
-        .groupby(["trajectory", "iteration"])["value"]
+        .groupby(["trajectory", "iteration", "evaluation_season"])["value"]
         .apply(per_season_distances)
-        .rename_axis(index=["trajectory", "iteration", "real_season"])
+        .rename_axis(index=["trajectory", "iteration", "evaluation_season", "real_season"])
         .reset_index(name="wasserstein")
     )
 
@@ -490,7 +490,7 @@ def calc_wasserstein_df(real_df, df_simmed, comparison_point=None,
     # aggregated: mean across real seasons, per trajectory x iteration
     agg_df = (
         detail_df
-        .groupby(["trajectory", "iteration"] + (["comparison_point"] if comparison_point else []))
+        .groupby(["trajectory", "iteration", "evaluation_season"] + (["comparison_point"] if comparison_point else []))
         .agg(wasserstein=("wasserstein", "mean"))
         .reset_index()
     )
@@ -504,8 +504,16 @@ detail_df_all = pd.concat([detail_curr, detail_old])
 wasserstein_df_all = pd.concat([wasserstein_df_curr, wasserstein_df_old])
 
 
-summary = (
+#%%
+
+trajectory_summary = (
     wasserstein_df_all
+    .groupby(["iteration", "comparison_point", "trajectory"], as_index=False)
+    .agg(wasserstein=("wasserstein", "mean"))
+)
+
+summary = (
+    trajectory_summary
     .groupby(["iteration", "comparison_point"])
     .agg(
         wasserstein_mean=("wasserstein", "mean"),
@@ -520,25 +528,26 @@ summary = (
     .reset_index()
 )
 
-summary
-
 p_wass = (
-    ggplot(summary, aes("iteration", "wasserstein_mean", color = "comparison_point"))
+    ggplot(summary, aes("iteration", "wasserstein_mean", color="comparison_point"))
     + geom_ribbon(
-        aes(ymin="lower", ymax="upper", fill = "comparison_point"),
+        aes(ymin="lower", ymax="upper", fill="comparison_point"),
+        color=None,  # Removes the solid outline around the ribbon
         alpha=0.2
     )
     + geom_line(size=1)
     + geom_point()
     + labs(
-        x="Training iteration",
-        y="Wasserstein distance"
+        x="Training Iteration",
+        y="Wasserstein Distance",
+        color="Dataset",
+        fill="Dataset"
     )
-    + theme_bw(base_size = 18)
-    + theme(figure_size = (12, 8))
+    + theme_bw(base_size=18)
+    + theme(figure_size=(12, 8))
 )
 
-display(p_wass)
+p_wass.show()
 p_wass.save(f"../project_diary/figs/wassertein_two_comparison_{today}.pdf")
 
 

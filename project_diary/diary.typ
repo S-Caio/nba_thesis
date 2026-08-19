@@ -703,24 +703,22 @@ This really drives home the fact that the 2022-23 and 2023-24 seasons were relat
 
 It also seems to me like the first simmed season doesn't fit a lot of real seasons very well. I could maybe use it as a throaway season at some point. I will have to decide later though.
 
-In reality, I am still doing this based off of not so much data, so here is what I am going to do. First, I will look into calculating the per-season Wasserstein distance instead of pooling across all seasons. Then, I will also try to collect more data in a new script using the latest saved version of my agents. That will solidify my conclusions. And I will port the current plots onto this new script, obviously.
+In reality, I am still doing this based off of not so much data, so here is what I am going to do. First, I will look into calculating the per-season Wasserstein distance instead of pooling across all seasons. Then, I will also try to collect more data in a new script using the latest saved version of my agents. That will solidify my conclusions. And I will port the current plots onto this new script, obviously. I could produce plots like the distribution of wasserstein over different seasons to see if I really should use the first season as a throaway.
+
+And, on the environment side, I have to update the drafting logic to take into account projected potential, not just current rating. Maybe I will also update the player retirement logic as well.
 
 
-// Liftoff! I finally have some really good news to share. I worked on making training faster, which involved a lot of messing around with hyperparameters. I don't think I have the final combination yet, but I was actually able to train for around 6000 iterations this time around. And the results are pretty great! Below we can see the wassertein metric between the real NBA and mt simulations throughout training:
+== August 19, 2026
 
-// #figure(
-//   image("figs/wasserstein_14_august.png", width : 75%)
-// )
+I need to do some thinking here for my evaluation script. Let me describe the issue. Actually, it can probably be separated into two issues. The first is which statistic to use in order to quantify the differences between real and simulated distributions. I started out using Wasserstein as my default metric, but it wasn't quite agreeing with me. If we go back to the previous entry, on the plot above where I have the KDEs of every simulated season against every real season, we see that Season 0 resembles the 2025-26 season quite a lot, but Wasserstein grades similarity as lower than seasons 4-7. I can accept that season 4 is a good fit, but seasons 7 and 8 don't seem like such a great fit. I could compare large, aggregate distributions using KL or JSD, but once I am looking at individual seasons then the KDE estimate is unreliable and the metric explodes, so not so great. From my tests, KS seems like a metric that tells me what I am looking for, but even then it isn't perfect.
 
-// It has a beautiful descending slope! And I now get the Wasserstein metric to around 0.2. There is still a little worry inside of me, because the Wasserstein distance between the distribution of current-system win percentages vs old-system win percentages is 0.0116. Thus, the difference between both systems is still smaller than the difference between the current NBA system and my simulation. Nevertheless, this is some positive signal.
+Second issue: do I compare to aggregate NBA seasons, or individual seasons? I currently favour the latter because an average plot could make a distribution that isn't characteristic of any real true NBA season. At the same time, maybe it is a good estimator? And there is quite a lot of change between NBA seasons. 
 
-// On that topic, I also wonder whether Wasserstein is the best metric to watch given that I am operating on a region of bounded support. The distance statistic will invariably have a very small range. Does a 0.02 to mean a bad fit, whereas 0.01 is great? Moreover, since the distance between two systems is only 0.0116, can this metric accurately measure the distance between dstributions? I could try to answer other questions, such as how persistently does an NBA team remain on top or at the bottom? How fast does a team rise, and so on? These could be incorporated into loss function for my calibration.
-
-// And there is another problem. If I also calculate the distance between my simulated seasons and the old free agency system we find that the simulated seasons actually resemble the old system better than they resemble the current draft system:
-
-
-
-
+*Next steps.* I want to make a function that does the following:
+- Plots an NBA season of my choice, together with the aggregate (pooled) KDE density plot for a specific season.
+- Shows the distribution of a statistic (KS, Wasserstein, Energy, JSD) between that selected NBA season and all of the season $n$ simulations. 
+- Then, create another plot to look at the estimator of that value, with bootstrapped intervals. So maybe I can make a grid of both the mean and the median.
+- Possibly distinguish between making comparisons on pooled distributions and individual distributions. 
 
 
 
@@ -767,3 +765,4 @@ In reality, I am still doing this based off of not so much data, so here is what
 - Parameters are largely guesstimated.
 - The game simulation is too simplistic.
 - Better players should contribute more than end-of-bench players.
+- Retirement should take into account player ability.

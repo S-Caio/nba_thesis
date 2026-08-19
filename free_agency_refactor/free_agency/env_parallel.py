@@ -51,7 +51,7 @@ class FreeAgencyEnv(ParallelEnv):
         self.n_contract_actions = self.config.n_proper_actions
         self.n_actions = self.n_contract_actions + 1
 
-        self.max_moves = 150
+        # self.max_moves = 1_000
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
@@ -186,16 +186,16 @@ class FreeAgencyEnv(ParallelEnv):
 
 
         # Truncation safety: prevent infinite free-agency loops
-        stalled = self.num_moves >= self.max_moves and not self._league_ready()
+        # stalled = self.num_moves >= self.max_moves and not self._league_ready()
 
         if self._league_ready():
             self._run_season_boundary()  # may overwrite self.terminations, keyed over possible_agents
 
 
-        if stalled:
-            print("Stalled the simulation!")
-            for agent in current_agents:
-                self.truncations[agent] = True
+        # if stalled:
+        #     print("Stalled the simulation!")
+        #     for agent in current_agents:
+        #         self.truncations[agent] = True
 
         # 2. Build output dicts scoped to current_agents, no matter what internal
         #    state looks like. This is the ONLY place PettingZoo-facing dicts get built.

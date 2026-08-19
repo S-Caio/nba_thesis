@@ -3,8 +3,8 @@
 #SBATCH --gpus=1
 #SBATCH --time=20:00:00
 #SBATCH --mem=32G
-#SBATCH --output=logs/%x_%j.log       # %x = Job Name, %j = Job ID
-#SBATCH --error=logs/%x_%j.err        # %x = Job Name, %j = Job ID
+#SBATCH --output=logs/gather_data/%x_%j.log       # %x = Job Name, %j = Job ID
+#SBATCH --error=logs/gather_data/%x_%j.err        # %x = Job Name, %j = Job ID
 #SBATCH --gres=gpu:1 
 #SBATCH --cpus-per-task=4
 
