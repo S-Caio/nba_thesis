@@ -46,7 +46,7 @@ class LeagueConfig:
     n_new_entrants_per_season: int = 60
 
     # Season simulation
-    season_noise_scale: float = 5.0
+    season_noise_scale: float = 7.0
 
     action_map: np.ndarray = field(init=False, repr=False)
 
