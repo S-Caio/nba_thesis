@@ -17,11 +17,11 @@ Other goodness-of-fit concerns also enter the equation. Questions such as: how w
 
 As a last criterion, the distance function must be computable even when the amount of data is low, as NBA seasons contain only 30 teams. Unfortunately, this rules out metrics such as Kullback-Leibler (KL) or Jensen-Shannon Divergence (JSD). Computing these on low amounts of data usually requires binning which reduces the resolution of comparison if the bins are too large, or risks numerical issues when the bins are too small. More resilient statistics, and the ones I will focus on, are Wasserstein distance, Energy distance, and the Kolmogorov-Smirnoff statistic. 
 
-To further build intuition as to which elements are preferrable, I display the winning percentage distributions of real NBA seasons against the KDE of simulations early in the research process in @kdes. After performing Monte-Carlo (MC) simulation of 1000 simulated seasons, I extract all first (season 0) and last seasons (season 9) to display. The seasons had meaningfully different shapes at that point in the process, so they serve as interesting comparison points.
+To further build intuition as to which elements are preferable, I display the winning percentage distributions of real NBA seasons against the KDE of simulations early in the research process in @kdes. After performing Monte-Carlo (MC) simulation of 1000 simulated seasons, I extract all first (season 0) and last seasons (season 9) to display. The seasons had meaningfully different shapes at that point in the process, so they serve as interesting comparison points.
 
 From looking at the KDEs we get a feel for the competing demands on the distance function. The 2012-13 season, for example, exhibits some bi-modality, but the peaks are quite close together and not as well delineated as in later seasons. Season 0, which exhibits strong bi-modality, does not fit the peaks or the reference distribution very well. Season 9 achieves a much better fit here, but it is uni-modal#footnote("This is a clear case of the secondary aims becoming more important than multi-modality."). In this scenario, given how bad the fit of season 0 is, a suitable distance function should most likely prefer season 9. The case flips for the 2017-18 season. While season 0 has more extreme peaks than the real-life distribution, the overall shape is a remarkably close. Season 9 is a decent fit, but its shape does not pass muster. An interesting case takes place in season 2020-21. At face-value it seems similar to the 2017-18 season, but season 0's fit is not as tight. There is some room for argumentation that season 9 is actually a better fit, or at least as competitive. Thus this is left undecided. Then, for the 2025-26 season it is clear that season 0 is the best fit once we take shape into account. It is the best overall fit of all distributions, even if season 9 matches the largest peak very well.
 
-This is ultimately a subjective exercise, and the reader may disagree with my judgement. It is my wish to take the reader through my decision process, so that they may understand how specific decisions were made. 
+This is ultimately a subjective exercise, and the reader may disagree with my judgement over the distributions. That is fine, and the reader is invited to do so. It is my wish to take the reader through my decision process, so that they may understand why I made specific decisions, even if erroneously. 
 
 
 
@@ -34,7 +34,9 @@ This is ultimately a subjective exercise, and the reader may disagree with my ju
 
 == Selecting a distance function
 
-We can now calculate distance functions and see which are closest to the ideal set out earlier.
+We can now calculate distance functions and see which are closest to the ideal set out earlier. Apart from the normal, raw versions of the candidate functions exposed previously, I will also consider standardising the data before computation, thereby stripping out the effect of mean and variance, and also a version where the data is only centred around its mean, as shown in @defining_metrics.
+
+
 #figure(
 table(
   columns: (auto, auto, auto),
@@ -61,7 +63,7 @@ placement: auto
 
 We can start by computing the distance function between our aggregate Monte-Carlo KDEs and the actual seasons we saw in @kdes. @table_agg_metrics shows that, in general, distance metrics do not evaluate shape that well, especially when the data is in its raw format. Season 9 routinely outperforms season 0 even when the reference point is season 2017-18 or 2025-26. It may also be noted that the distance value when data was centred are virtually identical to the raw version. It is only when we standardise the values that significant change takes place, suggesting spread was harming season 0's performance according to nearly all distance metrics.
 
-After adjusting for spread, the metrics all converge into a similar ranking and that, at least at first glance, agrees with the desired intuition. They collectively rate season 0's distribution as closer to seasons 2017-18, 2020-21, and 2025-26 than season 9. Only the 2012-13 season is closer to season 9.
+After adjusting for spread, the metrics all converge into a similar ranking which, at least at first glance, agrees with the desired intuition. They collectively rate season 0's distribution as close to seasons 2017-18 and 2025-26. The 2012-13 season is closer to season 9 in all rankings, and the metrics tend to disagree most when it comes to the 2020-21 season.
 
 
 #figure(
@@ -139,7 +141,8 @@ After adjusting for spread, the metrics all converge into a similar ranking and 
     // Spacing
     inset: (x: 6pt, y: 4pt),
   ),
-  caption: "Distance metrics between reference seasons and aggregate KDES"
+  caption: "Distance metrics between reference seasons and aggregate KDES",
+  placement: top
 ) <table_agg_metrics>
 
 Thus, given that standardising the data leads to such dramatically better results, the other versions will be discarded from further analysis. Standardising seems to be a cheap way to direct importance more to shape rather than how well individual peaks match up. The next step is to pick a singular distance function. We can start by plotting the distributions of distances we attain if we compute the distance function for every simulated season against all reference seasons. The can be seen in @dist_of_distances_plot, which shows the right-skewed distribution of Energy and Wasserstein alongside the jagged, multi-modal distribution of KS. While the KS statistic is easy and cheap to compute, its erratic behaviour suggests some instability, which is par for the course, since it is simply the maximum distance between two empirical CDFs.
@@ -149,12 +152,28 @@ Thus, given that standardising the data leads to such dramatically better result
 
 #figure(
   image("../free_agency_refactor/eval_scripts/generated_plots/SHAPE_distribution_of_distances_30_08_26_small.pdf"),
-  caption: "Distribution distance between all MC-simulated seasons and reference seasons."
+  caption: "Distribution distance between all MC-simulated seasons and reference seasons.",
+
 ) <dist_of_distances_plot>
 
-When it comes to Wasserstein and Energy, both seem to share strikingly similar distributions, with very little disagreement between them. There is also significant amounts of overlap between the distributions, which points to both the heterogeneity of the simulations and perhaps a difficulty in separating which simulated season is closest to real seasons. If we direct our attention towards @mean_dist_plot, however, we see that the mean distance is well defined and well separated. This imparts confidence that the distance function is able to pick out and higlight real differences.
+When it comes to Wasserstein and Energy, both seem to share strikingly similar distributions, with very little disagreement between them. There is also significant amounts of overlap between the distributions, which points to both the heterogeneity of the simulations and perhaps a difficulty in separating which simulated season is closest to real seasons. This is solved, however, by looking at the distribution of the bootstrapped mean distance, as shown in @mean_dist_plot. We see that the mean distance is well defined and well separated. This imparts confidence that the distance function is able to pick out and higlight real differences. 
 
 #figure(
   image("../free_agency_refactor/eval_scripts/generated_plots/bootstrapped_mean_dist_30_08_26_small.pdf"),
-  caption: "Bootstrapped distribution of the mean distance between seasons"
+  caption: "Bootstrapped distribution of the mean distance between simulated and real-life seasons.",
+  placement: auto
 ) <mean_dist_plot>
+
+The bootstrapped mean also allows for the test of what the metrics say against my original intuition. Already we see that the distributions of the mean Wasserstein between the 2012-13 season and the simulated seasons suffers from quite a lot of overlap, whereas Energy distance and KS are much better separated. The bootstrapped mean in most other simulations seems to agree with my initial classifications in other cases though, irrespective of which metric we pick. It is only in the 2020-21 season that there is significant confusion. Each metric had separate answers. KS marked season 9 as the closest, while Wasserstein preferred season 0. Perhaps in this situation the most honest depiction is that of the Energy distance, which features significant overlap between the two distributions.
+
+
+Now, it must be noted that by standardising the data prior to the distance function we are also discarding spread, which is still a very useful dimension of comparison. One possibility is to create an interpolation between the standardised and the centred versions, by weighting the standard deviation by some mixing parameter $phi$ which should be within certain bounds $0 lt.eq phi lt.eq 1$. The transformation of the data could take the following form:
+$
+(x - overline(x)) / sigma_x ^ phi, (y - overline(y)) / sigma_y ^ phi
+$
+
+At $phi = 0$ we recover the centred version, which is tantamount to the raw statistic. When $phi = 1$ we get the standardised version. However, this version introduces another hyperparameter which is impossible to objectively tune. Attempts could be made but for now it is best to leave it. 
+
+== Conclusion
+
+Overall, it does not seem to matter too much which distance function is ultimately picked. They broadly make similar choices, and their differences lie only in edge cases. In fact the most important feature is not which function to pick, but how to preprocess the data. Standardising the data is a more consequential step than the function to pick. However, if a choice must be made, it seems that the Energy distance balances stability, and good choices quite well. It will be the function I use for the rest of the paper.
