@@ -721,6 +721,13 @@ Second issue: do I compare to aggregate NBA seasons, or individual seasons? I cu
 - Possibly distinguish between making comparisons on pooled distributions and individual distributions. 
 
 
+== August 31, 2026
+I am back from Greece#footnote("I had a great time!") and I have been working at the evaluation script. In particular, I wanted to find the best distance function for my purposes. I think the work is now done in that regard (and it was so long!). The conclusion is basically that between Wasserstein, Energy, and KS, neither comes out ahead as the clear winner. The most important thing is not which function to use, but how to preprocess the data. Standardising the data prior to computation has a much larger effect. With it, the overall _shape_ of the distributions becomes a much more important attribute. I wrote this up in more detail as a supplementary material which is also included on the GitHub, so I will leave it at that. But to summarise, my basic process was to look at simulated distributions versus real-life NBA seasons, decide for myself how I would rate them (which is closest), and then see what the distance functions themselves said. Energy distance + standardisation came out on top.
+
+Now I need to work on more diagnostics. One that would be good is to compute the distances between real NBA seasons. Then after I get that distribution I can look at the distances between my simulated seasons themselves. If the distributions overlap significantly then I know that the variability between simulated seasons is within a normal range.
+
+I also need to show whether my seasons are closer to the old draft rule system or closer to the current paradigm. A plot showing the mean distance (with bootstrapped CI) of my seasons from the different systems would be good. 
+
 
 #pagebreak()
 

@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime
 from plotnine import *
 from scipy.stats import wasserstein_distance, energy_distance, ks_2samp
-from mc_diag_utils import (clean_real_data, 
+from nba_thesis.free_agency_refactor.eval_scripts.which_dist_func_utils import (clean_real_data, 
                            plot_aggregate_kdes_vs_seasons,
                             distance_between_aggregate_kdes,
                             distribution_of_distance,
@@ -78,6 +78,8 @@ def main():
     p_centred.save(f"generated_plots/CENTRED_distribution_of_distances_{today}_{plot_suffix}.pdf")
     p_shape_mod.save(f"generated_plots/SHAPE_MOD_distribution_of_distances_{today}_{plot_suffix}.pdf")
 
+
+    which_to_plot = "shape"
     boot_df = bootstrap_distance(
         dist_df=dist_dist_df,
         n_boot=500,
@@ -85,7 +87,7 @@ def main():
         sim_seasons=sim_seasons,
         funcs=funcs,
         seed=42,
-        raw_or_shape="mod_shape"
+        raw_or_shape=which_to_plot
     )
 
     

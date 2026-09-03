@@ -53,7 +53,7 @@ def new_entrants(n_new_players: int, age_mean: float = 21, age_std: float = 1,
     # salaries = np.zeros(n_new_players)
 
     # entrants = np.vstack([ratings, teams, ages, contract_lens, salaries]).T
-    return entrants[np.argsort(-entrants[:, RATING])]
+    return entrants[np.argsort(-entrants[:, POTENTIAL])]
 
 
 def pick_retirees(state: LeagueState, n_to_retire: int = 60) -> np.ndarray:

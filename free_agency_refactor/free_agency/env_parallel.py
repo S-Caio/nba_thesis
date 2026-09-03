@@ -17,7 +17,7 @@ import pprint
 from .constants import LeagueConfig, N_PLAYER_COLS, HISTORY_WINDOW, CAP_HORIZON, TEAM, AGE
 from .state import LeagueState, new_league_state, record_season_history, agent_to_team_id, initial_endowment
 # from .contracts import handle_signing, contract_update, make_action_mask
-from .contracts import submit_offer, resolve_offers, contract_update, make_action_mask, compute_cap_projection, make_free_agent_market_and_mapping, FREE_AGENT_MARKER
+from .contracts import submit_offer, resolve_offers, contract_update, make_action_mask, compute_cap_projection, make_free_agent_market_and_mapping, FREE_AGENT_MARKER, occlude_column
 from .rosters import rebuild_rosters, print_team_rosters
 from .player_lifecycle import player_update, run_rookie_draft
 from .season_sim import generate_exact_nba_schedule
@@ -60,7 +60,10 @@ class FreeAgencyEnv(ParallelEnv):
                 # "player_market": Box(low=0, high=np.inf,
                 #                       shape=(self.config.n_players, N_PLAYER_COLS), dtype=np.float32),
                 "free_agents" : Box(low=-1, high=np.inf,
-                                      shape=(self.config.n_free_agents, N_PLAYER_COLS), dtype=np.float32),
+                                      shape=(
+                                          self.config.n_free_agents,
+                                          N_PLAYER_COLS - 1), # NPLAYER_COLS - 1 because I delete POTENTIAL from the observations.
+                                    dtype=np.float32),
                 "my_team": Box(low=0, high=np.inf, shape=(self.config.players_per_team,), dtype=np.float32),
                 "my_team_rating" : Box(low = 0, high = np.inf, shape = (1, ), dtype = np.float32),
                 "relative_team_strength" : Box(low = -np.inf, high = np.inf, shape = (1, ), dtype = np.float32),
@@ -92,7 +95,7 @@ class FreeAgencyEnv(ParallelEnv):
         return {
             "action_mask": make_action_mask(self.league, self.config, agent, self.free_agents),
             # "player_market": self.league.players.astype(np.float32),
-            "free_agents" : self.free_agents.astype(np.float32),
+            "free_agents" : occlude_column(self.free_agents.astype(np.float32)),
             "my_team": self.league.teams[agent].astype(np.float32),
             "my_team_rating": np.array([np.sum(self.league.teams[agent])], dtype=np.float32),
             "relative_team_strength" : np.array([self.rel_strength[agent]], dtype=np.float32),

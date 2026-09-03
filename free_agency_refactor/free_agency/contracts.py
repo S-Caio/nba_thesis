@@ -195,6 +195,16 @@ def make_free_agent_market_and_mapping(league, config):
 
     return free_agent_market, make_free_agent_mapping(league, config)
 
+
+def occlude_column(market: np.ndarray, col_idx: int) -> np.ndarray:
+    """
+    Returns a copy of `market` with `col_idx` removed entirely (not
+    zeroed/filled) -- shrinks the column dimension by one. Use this on the
+    agent-facing free_agents array only; leave league.players untouched so
+    internal logic (draft, development, etc.) still has real POTENTIAL.
+    """
+    return np.delete(market, col_idx, axis=1)
+
 def submit_offer(state: LeagueState, config: LeagueConfig, agent: str, action, free_agent_mapping) -> None:
     """
     Record `agent`'s offer for this round; does NOT sign anyone.
